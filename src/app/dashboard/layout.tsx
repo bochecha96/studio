@@ -53,10 +53,10 @@ export default function DashboardLayout({
       <div className="flex min-h-screen">
         <AppSidebar />
         <main className="flex-1">
-          <header className="flex items-center justify-between p-4 border-b">
+          <header className="flex items-center justify-between p-6 border-b">
             <h1 className="text-2xl font-semibold">{headerTitle}</h1>
           </header>
-          <div className="p-4">
+          <div>
             {children}
           </div>
         </main>
