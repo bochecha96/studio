@@ -70,21 +70,27 @@ function AppSidebar() {
       <SidebarContent>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton ref="/dashboard" isActive>
-              <LayoutGrid />
-              Painel
+            <SidebarMenuButton href="/dashboard" asChild isActive>
+              <Link href="/dashboard">
+                <LayoutGrid />
+                Painel
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton ref="#">
-              <Users />
-              Contatos
+            <SidebarMenuButton href="#" asChild>
+              <Link href="#">
+                <Users />
+                Contatos
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton ref="#">
-              <Settings />
-              Configurações
+            <SidebarMenuButton href="#" asChild>
+              <Link href="#">
+                <Settings />
+                Configurações
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
