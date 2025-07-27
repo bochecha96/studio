@@ -47,6 +47,7 @@ const generateQrCodeFlow = ai.defineFlow(
       client = new Client({
         puppeteer: {
           headless: true,
+          executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
           args: ['--no-sandbox', '--disable-setuid-sandbox'],
         },
       });
