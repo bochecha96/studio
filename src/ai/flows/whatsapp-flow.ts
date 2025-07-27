@@ -12,10 +12,10 @@ import { z } from 'genkit';
 import { Client } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 
-export const GenerateQrCodeInputSchema = z.object({});
+const GenerateQrCodeInputSchema = z.object({});
 export type GenerateQrCodeInput = z.infer<typeof GenerateQrCodeInputSchema>;
 
-export const GenerateQrCodeOutputSchema = z.object({
+const GenerateQrCodeOutputSchema = z.object({
   qr: z.string().optional().describe("The QR code as a data URI."),
   status: z.string().describe("The connection status."),
 });
