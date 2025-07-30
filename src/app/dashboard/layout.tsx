@@ -94,11 +94,11 @@ export default function DashboardLayout({
     <SidebarProvider>
       <div className="flex min-h-screen bg-muted/30">
         <AppSidebar user={user} onLogout={handleLogout} />
-        <main className="flex-1">
+        <main className="w-full">
           <header className="flex items-center justify-between p-6 border-b bg-card">
             <h1 className="text-2xl font-semibold">{headerTitle}</h1>
           </header>
-          <div className="bg-background">
+          <div>
             {children}
           </div>
         </main>

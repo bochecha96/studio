@@ -75,8 +75,8 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="w-full">
-        <Tabs defaultValue="pendentes" className="w-full">
+      <div>
+        <Tabs defaultValue="pendentes">
           <TabsList>
             <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
             <TabsTrigger value="recuperadas">Recuperadas</TabsTrigger>
