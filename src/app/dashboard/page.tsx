@@ -75,30 +75,28 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div>
-        <Tabs defaultValue="pendentes">
-          <TabsList>
-            <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
-            <TabsTrigger value="recuperadas">Recuperadas</TabsTrigger>
-            <TabsTrigger value="perdidas">Perdidas</TabsTrigger>
-          </TabsList>
-          <TabsContent value="pendentes">
-            <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
-              <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
-            </div>
-          </TabsContent>
-          <TabsContent value="recuperadas">
-            <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
-              <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
-            </div>
-          </TabsContent>
-          <TabsContent value="perdidas">
-            <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
-              <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
+      <Tabs defaultValue="pendentes">
+        <TabsList>
+          <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
+          <TabsTrigger value="recuperadas">Recuperadas</TabsTrigger>
+          <TabsTrigger value="perdidas">Perdidas</TabsTrigger>
+        </TabsList>
+        <TabsContent value="pendentes">
+          <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
+            <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
+          </div>
+        </TabsContent>
+        <TabsContent value="recuperadas">
+          <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
+            <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
+          </div>
+        </TabsContent>
+        <TabsContent value="perdidas">
+          <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
+            <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
