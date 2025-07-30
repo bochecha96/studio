@@ -113,16 +113,20 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
   const [theme, setTheme] = useState("dark")
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem("theme") || "dark";
+    const storedTheme = localStorage.getItem("theme") || "light";
     setTheme(storedTheme)
-    document.documentElement.classList.toggle("dark", storedTheme === "dark")
+    if (storedTheme === 'dark') {
+      document.documentElement.classList.add("dark")
+    } else {
+      document.documentElement.classList.remove("dark")
+    }
   }, [])
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light"
     setTheme(newTheme)
     localStorage.setItem("theme", newTheme)
-    document.documentElement.classList.toggle("dark", newTheme === "dark")
+    document.documentElement.classList.toggle("dark")
   }
   
   return (
