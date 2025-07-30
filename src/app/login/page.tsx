@@ -110,7 +110,7 @@ export default function LoginPage() {
                 {form.formState.isSubmitting ? "Entrando..." : "Entrar"}
               </Button>
               <div className="mt-4 text-center text-sm">
-                <Link href="#" className="underline">
+                <Link href="/forgot-password" className="underline">
                   Esqueceu sua senha?
                 </Link>
               </div>
