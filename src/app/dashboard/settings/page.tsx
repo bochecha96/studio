@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,8 +10,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { QrCode, XCircle, CheckCircle, Loader } from "lucide-react"
+import { QrCode, XCircle, CheckCircle, Loader, Copy, Check } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { generateQrCode } from "@/ai/flows/whatsapp-flow"
 
@@ -20,25 +21,37 @@ type ConnectionStatus = "disconnected" | "connected" | "loading" | "error"
 export default function SettingsPage() {
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [status, setStatus] = useState<ConnectionStatus>("disconnected")
+  const [webhookUrl, setWebhookUrl] = useState("")
+  const [copied, setCopied] = useState(false)
   const { toast } = useToast()
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setWebhookUrl(`${window.location.origin}/api/webhook`)
+    }
+  }, [])
 
   const handleGenerateQrCode = async () => {
     setStatus("loading")
     setQrCode(null)
     try {
-      // Set a timeout on the frontend as well to avoid waiting forever
       const race = Promise.race([
         generateQrCode({}),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Frontend Timeout')), 70000)) // 70s
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Frontend Timeout')), 70000))
       ]);
 
       const result: any = await race;
       
       if (result.qr) {
         setQrCode(result.qr)
-        // Mocking connection success after a delay for demonstration
-        // In a real app, the 'ready' event from whatsapp-web.js would trigger this
+        // This part needs to be improved with websockets or polling to get the real connection status
+        const checkConnection = setInterval(() => {
+             // Here you would typically check a backend endpoint for the connection status
+             // For now, we simulate success after some time
+        }, 5000);
+
         setTimeout(() => {
+          clearInterval(checkConnection);
           if (status === 'loading') { // check if still in loading state
              setStatus("connected")
              setQrCode(null)
@@ -71,14 +84,23 @@ export default function SettingsPage() {
         description: "Sua sessão do WhatsApp foi encerrada.",
     })
   }
-
+  
+  const handleCopyWebhook = () => {
+    navigator.clipboard.writeText(webhookUrl)
+    setCopied(true)
+    toast({
+        title: "Copiado!",
+        description: "URL do Webhook copiada para a área de transferência.",
+    })
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const getStatusInfo = () => {
     switch (status) {
       case "connected":
         return {
           badge: (
-            <Badge variant="default" className="flex items-center gap-1 bg-green-500 text-white">
+            <Badge variant="default" className="flex items-center gap-1 bg-green-500 text-white hover:bg-green-600">
               <CheckCircle className="h-3 w-3" />
               Conectado
             </Badge>
@@ -180,6 +202,29 @@ export default function SettingsPage() {
                  </Button>
                 </>
             )}
+          </div>
+        </CardContent>
+      </Card>
+       <Card>
+        <CardHeader>
+          <CardTitle className="text-xl">Webhook de Vendas</CardTitle>
+          <CardDescription>
+            Conecte sua plataforma de vendas (Hotmart, Kiwify, etc.) usando este webhook para receber notificações de vendas em tempo real.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+           <div className="space-y-2">
+            <Label htmlFor="webhook-url">Sua URL do Webhook</Label>
+            <div className="flex items-center space-x-2">
+              <Input id="webhook-url" type="text" readOnly value={webhookUrl} />
+              <Button variant="secondary" size="icon" onClick={handleCopyWebhook}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                <span className="sr-only">Copiar URL do Webhook</span>
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Copie esta URL e cole no campo de webhook da sua plataforma de vendas.
+            </p>
           </div>
         </CardContent>
       </Card>
