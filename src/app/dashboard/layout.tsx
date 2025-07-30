@@ -92,13 +92,13 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen bg-muted/30">
         <AppSidebar user={user} onLogout={handleLogout} />
         <main className="flex-1">
-          <header className="flex items-center justify-between p-6 border-b">
+          <header className="flex items-center justify-between p-6 border-b bg-card">
             <h1 className="text-2xl font-semibold">{headerTitle}</h1>
           </header>
-          <div>
+          <div className="bg-background">
             {children}
           </div>
         </main>
@@ -110,9 +110,11 @@ export default function DashboardLayout({
 function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
   const { isMobile } = useSidebar();
   const pathname = usePathname();
-  const [theme, setTheme] = useState("dark")
+  const [theme, setTheme] = useState("light")
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const storedTheme = localStorage.getItem("theme") || "light";
     setTheme(storedTheme)
     if (storedTheme === 'dark') {
@@ -129,12 +131,16 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
     document.documentElement.classList.toggle("dark")
   }
   
+  if (!mounted) {
+    return null; // Avoid hydration mismatch
+  }
+  
   return (
     <Sidebar>
       <SidebarHeader>
         <div className="flex items-center gap-2">
-          <MessageSquare className="w-8 h-8 text-primary" />
-          <h2 className="text-xl font-semibold">RecuperaVendas</h2>
+          <MessageSquare className="w-8 h-8 text-sidebar-primary" />
+          <h2 className="text-xl font-semibold text-sidebar-foreground">RecuperaVendas</h2>
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -173,24 +179,21 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="flex-row items-center gap-2">
          <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <div className="flex items-center justify-between w-full cursor-pointer hover:bg-muted/50 p-2 rounded-lg">
+                <Button variant="ghost" className="flex-1 justify-start p-2">
                     <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
                             {user.photoURL && <AvatarImage src={user.photoURL} />}
                             <AvatarFallback>{user.email?.[0].toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col text-left">
-                            <span className="text-sm font-semibold">{user.displayName || 'Usuário'}</span>
+                            <span className="text-sm font-semibold text-sidebar-foreground">{user.displayName || 'Usuário'}</span>
                             <span className="text-xs text-muted-foreground">{user.email}</span>
                         </div>
                     </div>
-                     <Button variant="ghost" size="icon" onClick={e => { e.stopPropagation(); toggleTheme(); }}>
-                        {theme === 'light' ? <Moon /> : <Sun />}
-                    </Button>
-                </div>
+                </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end" forceMount>
                 <DropdownMenuLabel>Minha Conta</DropdownMenuLabel>
@@ -201,6 +204,10 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
+        <Button variant="ghost" size="icon" onClick={toggleTheme}>
+            {theme === 'light' ? <Moon className="text-sidebar-foreground" /> : <Sun className="text-sidebar-foreground" />}
+            <span className="sr-only">Alternar tema</span>
+        </Button>
       </SidebarFooter>
     </Sidebar>
   )
