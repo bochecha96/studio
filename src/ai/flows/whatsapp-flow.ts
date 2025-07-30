@@ -59,13 +59,19 @@ const generateQrCodeFlow = ai.defineFlow(
       authStrategy: new LocalAuth(),
       puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
       },
     });
 
-    const qrPromise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            cleanupClient();
+            reject(new Error('Timeout: QR Code generation took too long.'));
+        }, 70000); // 70-second timeout
+
         client!.on('qr', async (qr) => {
           console.log('QR RECEIVED', qr);
+          clearTimeout(timeout);
           try {
             const qrCodeDataUri = await qrcode.toDataURL(qr);
             resolve({ qr: qrCodeDataUri, status: 'pending' });
@@ -85,32 +91,22 @@ const generateQrCodeFlow = ai.defineFlow(
 
         client!.on('auth_failure', (msg) => {
             console.error('AUTHENTICATION FAILURE', msg);
-            reject(new Error('Authentication failure.'));
+            clearTimeout(timeout);
             cleanupClient();
+            reject(new Error('Authentication failure.'));
         });
 
         client!.on('disconnected', (reason) => {
             console.log('Client was logged out', reason);
             cleanupClient();
         });
-    });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => {
-        reject(new Error('Timeout: QR Code generation took too long.'));
-        cleanupClient();
-      }, 60000) // 60-second timeout
-    );
-
-    try {
-        client.initialize().catch(err => {
+        client!.initialize().catch(err => {
             console.error("Initialization error:", err);
+            clearTimeout(timeout);
             cleanupClient();
+            reject(err);
         });
-        return await Promise.race([qrPromise, timeoutPromise]);
-    } catch (error) {
-        await cleanupClient();
-        throw error;
-    }
+    });
   }
 );

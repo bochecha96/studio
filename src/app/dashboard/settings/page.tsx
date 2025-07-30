@@ -31,32 +31,35 @@ export default function SettingsPage() {
       setWebhookUrl(`${window.location.origin}/api/webhook`)
     }
   }, [])
+  
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    if (status === 'loading' && qrCode) {
+        timeoutId = setTimeout(() => {
+            setStatus('error');
+            setQrCode(null);
+            toast({
+                title: "Tempo Esgotado",
+                description: "Você demorou muito para escanear o QR Code. Tente novamente.",
+                variant: "destructive",
+            });
+        }, 45000); // 45s to scan
+    }
+    return () => clearTimeout(timeoutId);
+  }, [status, qrCode, toast]);
+
 
   const handleGenerateQrCode = async () => {
     setStatus("loading")
     setQrCode(null)
     try {
-      const race = Promise.race([
-        generateQrCode({}),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Frontend Timeout')), 70000))
-      ]);
-
-      const result: any = await race;
+      // The flow itself has a timeout now, so we don't need Promise.race here.
+      const result = await generateQrCode({})
       
       if (result.qr) {
         setQrCode(result.qr)
-        // This part needs to be improved with websockets or polling to get the real connection status
-        // For now, we assume the user will scan the QR code. We can simulate connection.
-        setTimeout(() => {
-          if (status === 'loading') { // check if still in loading state
-             setStatus("connected")
-             setQrCode(null)
-             toast({
-                title: "Conexão estabelecida",
-                description: "Seu WhatsApp foi conectado com sucesso.",
-             })
-          }
-        }, 45000) // 45s to scan
+        // We will wait for user to scan. A better implementation uses websockets.
+        // For now, we'll let the user manually confirm connection or let it timeout.
       } else {
         throw new Error("Não foi possível gerar o QR Code.")
       }
@@ -69,6 +72,16 @@ export default function SettingsPage() {
         variant: "destructive",
       })
     }
+  }
+
+  // This is a placeholder for a real connection check
+  const handleAssumeConnected = () => {
+    setStatus("connected");
+    setQrCode(null);
+    toast({
+        title: "Conexão estabelecida",
+        description: "Seu WhatsApp foi conectado com sucesso.",
+    });
   }
   
   const handleDisconnect = () => {
@@ -166,6 +179,7 @@ export default function SettingsPage() {
               <>
                 <Image src={qrCode} alt="QR Code do WhatsApp" width={200} height={200} />
                 <p className="text-muted-foreground">Escaneie o código acima com seu celular.</p>
+                <Button onClick={handleAssumeConnected} variant="outline">Já escaneei, conectar</Button>
               </>
             )}
             {status === "loading" && !qrCode && (
