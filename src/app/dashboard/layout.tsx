@@ -98,7 +98,9 @@ export default function DashboardLayout({
           <header className="flex items-center justify-between p-6 border-b bg-card">
             <h1 className="text-2xl font-semibold">{headerTitle}</h1>
           </header>
-          {children}
+          <div className="p-4 sm:p-6 lg:p-8">
+            {children}
+          </div>
         </main>
       </div>
     </SidebarProvider>
