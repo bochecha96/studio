@@ -36,6 +36,7 @@ import {
   LogOut,
   AlertTriangle,
   Moon,
+  Sun,
   Loader2,
 } from "lucide-react"
 import { app } from "@/lib/firebase"
@@ -109,6 +110,20 @@ export default function DashboardLayout({
 function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
   const { isMobile } = useSidebar();
   const pathname = usePathname();
+  const [theme, setTheme] = useState("dark")
+
+  useEffect(() => {
+    const storedTheme = localStorage.getItem("theme") || "dark";
+    setTheme(storedTheme)
+    document.documentElement.classList.toggle("dark", storedTheme === "dark")
+  }, [])
+
+  const toggleTheme = () => {
+    const newTheme = theme === "light" ? "dark" : "light"
+    setTheme(newTheme)
+    localStorage.setItem("theme", newTheme)
+    document.documentElement.classList.toggle("dark", newTheme === "dark")
+  }
   
   return (
     <Sidebar>
@@ -168,8 +183,8 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
                             <span className="text-xs text-muted-foreground">{user.email}</span>
                         </div>
                     </div>
-                     <Button variant="ghost" size="icon">
-                        <Moon />
+                     <Button variant="ghost" size="icon" onClick={e => { e.stopPropagation(); toggleTheme(); }}>
+                        {theme === 'light' ? <Moon /> : <Sun />}
                     </Button>
                 </div>
             </DropdownMenuTrigger>
