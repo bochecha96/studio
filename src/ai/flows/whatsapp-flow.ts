@@ -25,6 +25,22 @@ export type GenerateQrCodeOutput = z.infer<typeof GenerateQrCodeOutputSchema>;
 // the client instance and session state more robustly, likely using a
 // persistent store or a dedicated service.
 let client: Client | null = null;
+let connectionCheckInterval: NodeJS.Timeout | null = null;
+
+async function cleanupClient() {
+  if (client) {
+    try {
+      await client.destroy();
+    } catch (e) {
+      console.error('Error destroying client:', e);
+    }
+    client = null;
+  }
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval);
+    connectionCheckInterval = null;
+  }
+}
 
 export async function generateQrCode(input: GenerateQrCodeInput): Promise<GenerateQrCodeOutput> {
   return generateQrCodeFlow(input);
@@ -37,70 +53,64 @@ const generateQrCodeFlow = ai.defineFlow(
     outputSchema: GenerateQrCodeOutputSchema,
   },
   async () => {
-    return new Promise((resolve, reject) => {
-      if (client) {
-         // If a client exists, try to clean it up before creating a new one.
-         // This is a basic way to handle reconnection attempts.
-         client.destroy().catch(console.error);
-         client = null;
-      }
+    await cleanupClient();
 
-      client = new Client({
-        authStrategy: new LocalAuth(),
-        puppeteer: {
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        },
-      });
-
-      const timeout = setTimeout(() => {
-         client?.destroy();
-         client = null;
-         reject(new Error('Timeout: QR Code generation took too long.'));
-      }, 60000); // 60-second timeout
-
-      client.on('qr', async (qr) => {
-        console.log('QR RECEIVED', qr);
-        try {
-          const qrCodeDataUri = await qrcode.toDataURL(qr);
-          clearTimeout(timeout);
-          resolve({ qr: qrCodeDataUri, status: 'pending' });
-        } catch (err) {
-          clearTimeout(timeout);
-          reject(err);
-        }
-      });
-
-      client.on('ready', () => {
-        console.log('Client is ready!');
-        clearTimeout(timeout);
-        // In a real app, you would update the status to 'connected'
-        // and probably store the session data here.
-        // For now, we resolve with a connected status, but the frontend will handle the UI change.
-      });
-
-      client.on('authenticated', () => {
-        console.log('AUTHENTICATED');
-      });
-
-       client.on('auth_failure', (msg) => {
-        console.error('AUTHENTICATION FAILURE', msg);
-        clearTimeout(timeout);
-        client?.destroy();
-        client = null;
-        reject(new Error('Authentication failure.'));
-      });
-
-      client.on('disconnected', (reason) => {
-        console.log('Client was logged out', reason);
-        client?.destroy();
-        client = null; // Clear the client instance
-      });
-
-      client.initialize().catch(err => {
-         clearTimeout(timeout);
-         reject(err)
-      });
+    client = new Client({
+      authStrategy: new LocalAuth(),
+      puppeteer: {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      },
     });
+
+    const qrPromise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
+        client!.on('qr', async (qr) => {
+          console.log('QR RECEIVED', qr);
+          try {
+            const qrCodeDataUri = await qrcode.toDataURL(qr);
+            resolve({ qr: qrCodeDataUri, status: 'pending' });
+          } catch (err) {
+            reject(err);
+          }
+        });
+
+        client!.on('ready', () => {
+            console.log('Client is ready!');
+            // The frontend will handle the status update to "connected"
+        });
+
+        client!.on('authenticated', () => {
+            console.log('AUTHENTICATED');
+        });
+
+        client!.on('auth_failure', (msg) => {
+            console.error('AUTHENTICATION FAILURE', msg);
+            reject(new Error('Authentication failure.'));
+            cleanupClient();
+        });
+
+        client!.on('disconnected', (reason) => {
+            console.log('Client was logged out', reason);
+            cleanupClient();
+        });
+    });
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        reject(new Error('Timeout: QR Code generation took too long.'));
+        cleanupClient();
+      }, 60000) // 60-second timeout
+    );
+
+    try {
+        client.initialize().catch(err => {
+            console.error("Initialization error:", err);
+            cleanupClient();
+        });
+        return await Promise.race([qrPromise, timeoutPromise]);
+    } catch (error) {
+        await cleanupClient();
+        throw error;
+    }
   }
 );
