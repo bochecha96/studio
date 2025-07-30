@@ -15,7 +15,7 @@ import { QrCode, XCircle, CheckCircle, Loader } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { generateQrCode } from "@/ai/flows/whatsapp-flow"
 
-type ConnectionStatus = "disconnected" | "connected" | "loading"
+type ConnectionStatus = "disconnected" | "connected" | "loading" | "error"
 
 export default function SettingsPage() {
   const [qrCode, setQrCode] = useState<string | null>(null)
@@ -26,10 +26,18 @@ export default function SettingsPage() {
     setStatus("loading")
     setQrCode(null)
     try {
-      const result = await generateQrCode({})
+      // Set a timeout on the frontend as well to avoid waiting forever
+      const race = Promise.race([
+        generateQrCode({}),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Frontend Timeout')), 70000)) // 70s
+      ]);
+
+      const result: any = await race;
+      
       if (result.qr) {
         setQrCode(result.qr)
         // Mocking connection success after a delay for demonstration
+        // In a real app, the 'ready' event from whatsapp-web.js would trigger this
         setTimeout(() => {
           if (status === 'loading') { // check if still in loading state
              setStatus("connected")
@@ -39,26 +47,36 @@ export default function SettingsPage() {
                 description: "Seu WhatsApp foi conectado com sucesso.",
              })
           }
-        }, 30000) // 30s to scan
+        }, 45000) // 45s to scan
       } else {
         throw new Error("Não foi possível gerar o QR Code.")
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
-      setStatus("disconnected")
+      setStatus("error")
       toast({
-        title: "Erro ao gerar QR Code",
-        description: "Não foi possível gerar um novo QR Code. Tente novamente.",
+        title: "Erro na Conexão",
+        description: error.message || "Não foi possível conectar. Tente novamente.",
         variant: "destructive",
       })
     }
   }
+  
+  const handleDisconnect = () => {
+    // In a real app, you would also need a backend call to client.destroy()
+    setStatus("disconnected")
+    setQrCode(null)
+    toast({
+        title: "Desconectado",
+        description: "Sua sessão do WhatsApp foi encerrada.",
+    })
+  }
+
 
   const getStatusInfo = () => {
     switch (status) {
       case "connected":
         return {
-          text: "Conectado",
           badge: (
             <Badge variant="default" className="flex items-center gap-1 bg-green-500 text-white">
               <CheckCircle className="h-3 w-3" />
@@ -69,7 +87,6 @@ export default function SettingsPage() {
         }
       case "loading":
          return {
-          text: "Aguardando conexão",
           badge: (
             <Badge variant="secondary" className="flex items-center gap-1">
               <Loader className="h-3 w-3 animate-spin" />
@@ -78,10 +95,19 @@ export default function SettingsPage() {
           ),
           description: "Escaneie o QR Code para conectar.",
         }
+      case "error":
+         return {
+          badge: (
+            <Badge variant="destructive" className="flex items-center gap-1">
+              <XCircle className="h-3 w-3" />
+              Erro
+            </Badge>
+          ),
+          description: "Falha ao tentar conectar.",
+        }
       case "disconnected":
       default:
         return {
-          text: "Desconectado",
           badge: (
             <Badge variant="destructive" className="flex items-center gap-1">
               <XCircle className="h-3 w-3" />
@@ -130,12 +156,12 @@ export default function SettingsPage() {
                     <p className="text-muted-foreground">Gerando QR Code...</p>
                  </div>
             )}
-            {status === "disconnected" && (
+            {(status === "disconnected" || status === "error") && (
                 <>
                  <div className="p-4 bg-muted rounded-md">
                     <QrCode className="h-16 w-16 text-muted-foreground" />
                  </div>
-                 <p className="text-muted-foreground">Nenhum QR gerado ainda.</p>
+                 <p className="text-muted-foreground">{status === 'error' ? 'Ocorreu um erro.' : 'Nenhum QR gerado ainda.'}</p>
                  <Button onClick={handleGenerateQrCode}>
                     <QrCode className="mr-2 h-4 w-4" />
                     Gerar novo QR Code
@@ -148,7 +174,7 @@ export default function SettingsPage() {
                     <CheckCircle className="h-16 w-16 text-green-500" />
                  </div>
                  <p className="text-muted-foreground">Seu número está conectado e pronto para uso.</p>
-                 <Button variant="destructive" onClick={() => setStatus("disconnected")}>
+                 <Button variant="destructive" onClick={handleDisconnect}>
                     <XCircle className="mr-2 h-4 w-4" />
                     Desconectar
                  </Button>

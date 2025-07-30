@@ -42,6 +42,7 @@ const generateQrCodeFlow = ai.defineFlow(
          // If a client exists, try to clean it up before creating a new one.
          // This is a basic way to handle reconnection attempts.
          client.destroy().catch(console.error);
+         client = null;
       }
 
       client = new Client({
@@ -54,6 +55,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
       const timeout = setTimeout(() => {
          client?.destroy();
+         client = null;
          reject(new Error('Timeout: QR Code generation took too long.'));
       }, 60000); // 60-second timeout
 
@@ -79,6 +81,8 @@ const generateQrCodeFlow = ai.defineFlow(
        client.on('auth_failure', (msg) => {
         console.error('AUTHENTICATION FAILURE', msg);
         clearTimeout(timeout);
+        client?.destroy();
+        client = null;
         reject(new Error('Authentication failure.'));
       });
 
