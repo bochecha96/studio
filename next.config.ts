@@ -18,6 +18,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  serverComponentsExternalPackages: ['puppeteer-core', 'puppeteer', 'whatsapp-web.js'],
 };
 
 export default nextConfig;
