@@ -40,6 +40,7 @@ import {
 } from "lucide-react"
 import { app } from "@/lib/firebase"
 
+export const dynamic = 'force-dynamic'
 
 export default function DashboardLayout({
   children,
