@@ -9,7 +9,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { Client } from 'whatsapp-web.js';
+import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 
 const GenerateQrCodeInputSchema = z.object({});
@@ -46,13 +46,10 @@ const generateQrCodeFlow = ai.defineFlow(
       }
 
       client = new Client({
+        authStrategy: new LocalAuth(),
         puppeteer: {
           headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        },
-        webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
         },
       });
 
@@ -79,6 +76,11 @@ const generateQrCodeFlow = ai.defineFlow(
         clearTimeout(timeout);
         // In a real app, you would update the status to 'connected'
         // and probably store the session data here.
+        // For now, we resolve with a connected status, but the frontend will handle the UI change.
+      });
+
+      client.on('authenticated', () => {
+        console.log('AUTHENTICATED');
       });
 
        client.on('auth_failure', (msg) => {
@@ -91,6 +93,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
       client.on('disconnected', (reason) => {
         console.log('Client was logged out', reason);
+        client?.destroy();
         client = null; // Clear the client instance
       });
 
