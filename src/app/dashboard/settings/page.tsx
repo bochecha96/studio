@@ -46,13 +46,8 @@ export default function SettingsPage() {
       if (result.qr) {
         setQrCode(result.qr)
         // This part needs to be improved with websockets or polling to get the real connection status
-        const checkConnection = setInterval(() => {
-             // Here you would typically check a backend endpoint for the connection status
-             // For now, we simulate success after some time
-        }, 5000);
-
+        // For now, we assume the user will scan the QR code. We can simulate connection.
         setTimeout(() => {
-          clearInterval(checkConnection);
           if (status === 'loading') { // check if still in loading state
              setStatus("connected")
              setQrCode(null)
@@ -145,7 +140,7 @@ export default function SettingsPage() {
   const statusInfo = getStatusInfo()
 
   return (
-    <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Conexão WhatsApp</CardTitle>
