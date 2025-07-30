@@ -145,7 +145,7 @@ export default function SettingsPage() {
   const statusInfo = getStatusInfo()
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
       <Card>
         <CardHeader>
           <CardTitle className="text-xl">Conexão WhatsApp</CardTitle>
