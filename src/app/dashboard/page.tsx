@@ -75,33 +75,27 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div>
-        <Tabs defaultValue="pendentes">
+      <div className="w-full">
+        <Tabs defaultValue="pendentes" className="w-full">
           <TabsList>
             <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
             <TabsTrigger value="recuperadas">Recuperadas</TabsTrigger>
             <TabsTrigger value="perdidas">Perdidas</TabsTrigger>
           </TabsList>
           <TabsContent value="pendentes">
-            <Card>
-              <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
-              </CardContent>
-            </Card>
+            <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
+            </div>
           </TabsContent>
           <TabsContent value="recuperadas">
-            <Card>
-              <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
-              </CardContent>
-            </Card>
+            <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
+            </div>
           </TabsContent>
           <TabsContent value="perdidas">
-            <Card>
-              <CardContent className="flex items-center justify-center h-48">
-                <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
-              </CardContent>
-            </Card>
+            <div className="flex items-center justify-center p-6 h-48 border rounded-lg bg-card text-card-foreground shadow-sm">
+              <p className="text-muted-foreground">Nenhuma venda encontrada para este status e período.</p>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
