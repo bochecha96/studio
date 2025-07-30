@@ -20,8 +20,8 @@ import {
 
 export default function DashboardPage() {
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
+    <div className="max-w-7xl mx-auto space-y-8">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <h2 className="text-3xl font-bold tracking-tight">Visão Geral</h2>
         <div className="flex items-center space-x-2">
           <Button variant="outline">7 dias</Button>
@@ -30,7 +30,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-base font-medium">
