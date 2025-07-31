@@ -1,7 +1,7 @@
 "use client"
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 
 import { Button } from "@/components/ui/button"
@@ -94,8 +94,7 @@ export default function ContactsPage() {
     setLoading(true);
     const q = query(
         collection(db, 'contacts'), 
-        where('userId', '==', user.uid),
-        orderBy('lastContact', 'desc')
+        where('userId', '==', user.uid)
     );
 
     const unsubscribeSnapshot = onSnapshot(q, (querySnapshot) => {
@@ -112,6 +111,8 @@ export default function ContactsPage() {
           userId: data.userId
         });
       });
+      // Sort contacts by lastContact date in descending order on the client-side
+      contactsData.sort((a, b) => b.lastContact.getTime() - a.lastContact.getTime());
       setContacts(contactsData);
       setLoading(false);
     }, (error) => {
