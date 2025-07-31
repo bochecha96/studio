@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
+import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -13,9 +14,16 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { QrCode, XCircle, CheckCircle, Loader, Copy, Check } from "lucide-react"
+import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { generateQrCode } from "@/ai/flows/whatsapp-flow"
+import { app } from "@/lib/firebase"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert"
 
 type ConnectionStatus = "disconnected" | "connected" | "loading" | "error"
 
@@ -24,13 +32,26 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected")
   const [webhookUrl, setWebhookUrl] = useState("")
   const [copied, setCopied] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  const [loadingUser, setLoadingUser] = useState(true)
   const { toast } = useToast()
+  const auth = getAuth(app)
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setWebhookUrl(`${window.location.origin}/api/webhook`)
-    }
-  }, [])
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser)
+        if (typeof window !== "undefined") {
+          setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
+        }
+      } else {
+        // Handle case where user is not logged in, maybe redirect or show error
+        setUser(null)
+      }
+      setLoadingUser(false)
+    })
+    return () => unsubscribe()
+  }, [auth])
   
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -43,7 +64,7 @@ export default function SettingsPage() {
                 description: "Você demorou muito para escanear o QR Code. Tente novamente.",
                 variant: "destructive",
             });
-        }, 45000); // 45s to scan
+        }, 60000); // 60s to scan
     }
     return () => clearTimeout(timeoutId);
   }, [status, qrCode, toast]);
@@ -53,13 +74,10 @@ export default function SettingsPage() {
     setStatus("loading")
     setQrCode(null)
     try {
-      // The flow itself has a timeout now, so we don't need Promise.race here.
       const result = await generateQrCode({})
       
       if (result.qr) {
         setQrCode(result.qr)
-        // We will wait for user to scan. A better implementation uses websockets.
-        // For now, we'll let the user manually confirm connection or let it timeout.
       } else {
         throw new Error("Não foi possível gerar o QR Code.")
       }
@@ -95,6 +113,7 @@ export default function SettingsPage() {
   }
   
   const handleCopyWebhook = () => {
+    if (!webhookUrl) return
     navigator.clipboard.writeText(webhookUrl)
     setCopied(true)
     toast({
@@ -223,18 +242,31 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-           <div className="space-y-2">
-            <Label htmlFor="webhook-url">Sua URL do Webhook</Label>
-            <div className="flex items-center space-x-2">
-              <Input id="webhook-url" type="text" readOnly value={webhookUrl} />
-              <Button variant="secondary" size="icon" onClick={handleCopyWebhook}>
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                <span className="sr-only">Copiar URL do Webhook</span>
-              </Button>
+           <div className="space-y-4">
+            <div>
+              <Label htmlFor="webhook-url">Sua URL de Webhook única</Label>
+              <div className="flex items-center space-x-2 mt-2">
+                {loadingUser ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <Input id="webhook-url" type="text" readOnly value={webhookUrl} className="text-muted-foreground"/>
+                )}
+                <Button variant="secondary" size="icon" onClick={handleCopyWebhook} disabled={loadingUser || !webhookUrl}>
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  <span className="sr-only">Copiar URL do Webhook</span>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Copie esta URL e cole no campo de webhook da sua plataforma de vendas.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Copie esta URL e cole no campo de webhook da sua plataforma de vendas.
-            </p>
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Importante</AlertTitle>
+              <AlertDescription>
+                Esta URL é única para sua conta. Não a compartilhe com ninguém.
+              </AlertDescription>
+            </Alert>
           </div>
         </CardContent>
       </Card>
