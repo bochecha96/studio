@@ -30,19 +30,23 @@ const QR_CODE_TIMEOUT = 70000;
 async function destroyClient(clientToDestroy: Client | null) {
   if (clientToDestroy) {
     try {
-      if (clientToDestroy.pupBrowser) {
-        clientToDestroy.removeAllListeners();
+      // Check if the browser is connected before trying to close it.
+      const isConnected = await clientToDestroy.pupBrowser?.isConnected();
+      if (isConnected) {
+        console.log('Attempting to destroy active client session...');
         await clientToDestroy.destroy();
         console.log('Client destroyed successfully.');
       } else {
-         clientToDestroy.removeAllListeners();
-         console.log('Client reference cleared, but no active browser to destroy.');
+        console.log('Client reference exists but browser is not connected. Clearing reference.');
       }
     } catch (e) {
       console.error('Error destroying client:', e);
     } finally {
+       // Clear all listeners to prevent memory leaks
+      clientToDestroy.removeAllListeners();
       if (currentClient === clientToDestroy) {
         currentClient = null;
+        console.log('Global client reference cleared.');
       }
     }
   }
@@ -63,9 +67,14 @@ const generateQrCodeFlow = ai.defineFlow(
     let currentFlowClient: Client | null = null;
 
     try {
+      // Always clean up any existing client before starting a new one.
       await destroyClient(currentClient);
       
-      const executablePath = await chromium.executablePath || '/usr/bin/google-chrome';
+      const executablePath = await chromium.executablePath;
+
+      if (!executablePath) {
+        throw new Error('Chromium executable not found. `chrome-aws-lambda` may not be installed or configured correctly.');
+      }
       
       console.log(`Using Chromium executable at: ${executablePath}`);
 
@@ -132,7 +141,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
           try {
             const qrCodeDataUri = await qrcode.toDataURL(qr);
-            cleanupListeners();
+            cleanupListeners(); // Important to cleanup here to avoid multiple resolves
             resolve({ qr: qrCodeDataUri, status: 'pending' });
           } catch (err) {
             cleanupListeners();
@@ -147,29 +156,32 @@ const generateQrCodeFlow = ai.defineFlow(
         client.once('disconnected', handleDisconnected);
       });
       
+      console.log('Initializing WhatsApp client...');
       await currentFlowClient.initialize();
-      console.log('Client initialization initiated.');
+      console.log('Client initialization process started.');
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
-          console.log('Timeout reached for QR code generation.');
-          destroyClient(currentFlowClient);
-          reject(new Error('Timeout: QR Code generation took too long.'));
+          console.log('Timeout reached for QR code generation or authentication.');
+          // Don't call destroy here, as finally block will handle it.
+          reject(new Error('Timeout: Process took too long. Please try again.'));
         }, QR_CODE_TIMEOUT);
       });
   
       const result = await Promise.race([qrPromise, timeoutPromise]);
       
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
       return result;
 
     } catch (error) {
         console.error("Flow error:", error);
+        // The finally block will handle cleanup
+        throw error; // Re-throw the error to be caught by the caller
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+        // Cleanup the client created in this specific flow run
         await destroyClient(currentFlowClient);
-        // Re-throw the error to be caught by the caller
-        throw error;
     }
   }
 );
