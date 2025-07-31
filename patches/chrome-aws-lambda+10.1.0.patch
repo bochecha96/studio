@@ -1,0 +1,73 @@
+diff --git a/node_modules/chrome-aws-lambda/build/index.js b/node_modules/chrome-aws-lambda/build/index.js
+index 7208182..a8d2c20 100644
+--- a/node_modules/chrome-aws-lambda/build/index.js
++++ b/node_modules/chrome-aws-lambda/build/index.js
+@@ -10,7 +10,7 @@ const path_1 = __importDefault(require("path"));
+ class Chromium {
+     /**
+      * Returns a list of recommended puppeteer arguments.
+      */
+-    static get args() {
++    static get args() { 
+         const result = [
+             '--allow-running-insecure-content',
+             '--autoplay-policy=user-gesture-required',
+@@ -111,7 +111,7 @@ class Chromium {
+         if (process.env.AWS_LAMBDA_FUNCTION_VERSION) {
+             result.push(...['--single-process']);
+         }
+-        else {
++ else {
+             result.push(...['--start-maximized']);
+         }
+         return result;
+@@ -119,10 +119,10 @@ class Chromium {
+     /**
+      * Returns the default puppeteer executable path.
+      */
+     static get defaultViewport() {
+-        return {
++ return {
+             width: 1280,
+             height: 720,
+         };
+     }
+@@ -130,13 +130,13 @@ class Chromium {
+      * Returns the puppeteer executable path.
+      */
+     static get executablePath() {
+-        return (async () => {
+-            if (process.env.CHROME_EXECUTABLE_PATH) {
+-                return process.env.CHROME_EXECUTABLE_PATH;
+-            }
+-            const input = path_1.default.join(__dirname, '..', 'bin');
+-            for (const file of ['chromium.br', 'chrome.br']) {
+-                const path = path_1.default.join(input, file);
+-                const output = path_1.default.join(os_1.default.tmpdir(), file.replace(/\.br$/, ''));
+-                if (fs_1.default.existsSync(output) === true) {
+-                    await fs_1.default.promises.utimes(output, new Date(), new Date());
+-                    return output;
+-                }
+-                if (fs_1.default.existsSync(path) === false) {
+-                    continue;
+-                }
+-                const compressed = await fs_1.default.promises.readFile(path);
+-                const decompressed = brotli_1.default.decompress(compressed);
+-                await fs_1.default.promises.writeFile(output, decompressed, {
+-                    mode: 0o755,
+-                });
+-                return output;
+-            }
+-            return null;
+-        })();
++ return Promise.resolve(path_1.default.join(
++            __dirname,
++ '..',
++ 'bin',
++ 'chromium'
++        ));
+     }
+     /**
+      * Returns the path to the headless chromium font configuration.
+     static get font() {
+```

@@ -12,6 +12,8 @@ import { z } from 'genkit';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 import chromium from 'chrome-aws-lambda';
+import path from 'path';
+
 
 const GenerateQrCodeInputSchema = z.object({});
 export type GenerateQrCodeInput = z.infer<typeof GenerateQrCodeInputSchema>;
@@ -63,14 +65,12 @@ const generateQrCodeFlow = ai.defineFlow(
     try {
       await destroyClient(currentClient);
       
-      const executablePath = await chromium.executablePath;
-      if (!executablePath) {
-        throw new Error('Chromium executable not found. `chrome-aws-lambda` may not be installed correctly.');
-      }
+      const executablePath = await chromium.executablePath || '/usr/bin/google-chrome';
+      
       console.log(`Using Chromium executable at: ${executablePath}`);
 
       currentFlowClient = new Client({
-        authStrategy: new LocalAuth(),
+        authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), '.wweb_auth') }),
         puppeteer: {
           headless: true,
           executablePath: executablePath,
