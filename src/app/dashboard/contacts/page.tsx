@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, User } from "firebase/auth";
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,7 +21,7 @@ import {
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Search, Upload, PlusCircle, CheckCircle, Clock, XCircle, Loader2 } from "lucide-react"
-import { db } from '@/lib/firebase';
+import { app, db } from '@/lib/firebase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -31,6 +33,7 @@ interface Contact {
   product: string;
   status: 'Recuperado' | 'Pendente' | 'Perdido';
   lastContact: Date;
+  userId: string;
 }
 
 const StatusBadge = ({ status }: { status: Contact['status'] }) => {
@@ -66,10 +69,36 @@ export default function ContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [user, setUser] = useState<User | null>(null);
+  const auth = getAuth(app);
+
 
   useEffect(() => {
-    const q = query(collection(db, 'contacts'), orderBy('lastContact', 'desc'));
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
+        setLoading(false);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, [auth]);
+
+  useEffect(() => {
+    if (!user) {
+        // No user, clear contacts and stop loading
+        setContacts([]);
+        setLoading(false);
+        return;
+    };
+
+    setLoading(true);
+    const q = query(
+        collection(db, 'contacts'), 
+        where('userId', '==', user.uid),
+        orderBy('lastContact', 'desc')
+    );
+
+    const unsubscribeSnapshot = onSnapshot(q, (querySnapshot) => {
       const contactsData: Contact[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
@@ -80,6 +109,7 @@ export default function ContactsPage() {
           product: data.product,
           status: data.status,
           lastContact: data.lastContact.toDate(),
+          userId: data.userId
         });
       });
       setContacts(contactsData);
@@ -89,8 +119,8 @@ export default function ContactsPage() {
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => unsubscribeSnapshot();
+  }, [user]);
 
   const filteredContacts = useMemo(() => {
     if (!searchTerm) {
@@ -184,7 +214,7 @@ export default function ContactsPage() {
             ) : (
                  <TableRow>
                     <TableCell colSpan={4} className="h-24 text-center">
-                        Nenhum contato encontrado.
+                        {user ? 'Nenhum contato encontrado.' : 'Faça login para ver seus contatos.'}
                     </TableCell>
                 </TableRow>
             )}

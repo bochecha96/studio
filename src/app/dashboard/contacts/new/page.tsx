@@ -6,6 +6,8 @@ import * as z from "zod"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { addDoc, collection, serverTimestamp } from "firebase/firestore"
+import { useEffect, useState } from "react"
+import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -25,8 +27,8 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
-import { db } from "@/lib/firebase"
-import { ArrowLeft } from "lucide-react"
+import { app, db } from "@/lib/firebase"
+import { ArrowLeft, Loader2 } from "lucide-react"
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "O nome deve ter pelo menos 2 caracteres." }),
@@ -37,6 +39,21 @@ const formSchema = z.object({
 export default function NewContactPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const auth = getAuth(app)
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+      } else {
+        router.push('/login');
+      }
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [auth, router]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -48,9 +65,19 @@ export default function NewContactPage() {
   })
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!user) {
+      toast({
+        title: "Erro",
+        description: "Você precisa estar logado para adicionar um contato.",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       await addDoc(collection(db, "contacts"), {
         ...values,
+        userId: user.uid,
         status: "Pendente",
         lastContact: serverTimestamp(),
       })
@@ -68,6 +95,15 @@ export default function NewContactPage() {
       })
     }
   }
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
 
   return (
     <div>
