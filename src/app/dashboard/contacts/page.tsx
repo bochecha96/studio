@@ -1,7 +1,7 @@
 "use client"
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, doc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged, User } from "firebase/auth";
 
 import { Button } from "@/components/ui/button"
@@ -15,21 +15,40 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Search, Upload, PlusCircle, CheckCircle, Clock, XCircle, Loader2 } from "lucide-react"
+import { Search, PlusCircle, CheckCircle, Clock, XCircle, Loader2, MoreHorizontal, Trash2 } from "lucide-react"
 import { app, db } from '@/lib/firebase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useToast } from '@/hooks/use-toast';
 
 
 interface Contact {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   product: string;
   status: 'Recuperado' | 'Pendente' | 'Perdido';
   lastContact: Date;
@@ -71,6 +90,8 @@ export default function ContactsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const auth = getAuth(app);
+  const { toast } = useToast();
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
 
 
   useEffect(() => {
@@ -85,7 +106,6 @@ export default function ContactsPage() {
 
   useEffect(() => {
     if (!user) {
-        // No user, clear contacts and stop loading
         setContacts([]);
         setLoading(false);
         return;
@@ -105,13 +125,13 @@ export default function ContactsPage() {
           id: doc.id,
           name: data.name,
           email: data.email,
+          phone: data.phone,
           product: data.product,
           status: data.status,
           lastContact: data.lastContact.toDate(),
           userId: data.userId
         });
       });
-      // Sort contacts by lastContact date in descending order on the client-side
       contactsData.sort((a, b) => b.lastContact.getTime() - a.lastContact.getTime());
       setContacts(contactsData);
       setLoading(false);
@@ -140,6 +160,53 @@ export default function ContactsPage() {
     return name.substring(0, 2).toUpperCase();
   };
 
+  const handleDeleteContact = async (contactId: string) => {
+    try {
+      await deleteDoc(doc(db, 'contacts', contactId));
+      toast({
+        title: "Sucesso!",
+        description: "Contato excluído.",
+      });
+    } catch (error) {
+      console.error("Error deleting contact: ", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir o contato.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteAllContacts = async () => {
+    if (!user) return;
+    setIsDeletingAll(true);
+    try {
+      const q = query(collection(db, 'contacts'), where('userId', '==', user.uid));
+      const querySnapshot = await getDocs(q);
+      
+      const batch = writeBatch(db);
+      querySnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+
+      toast({
+        title: "Sucesso!",
+        description: "Todos os contatos foram excluídos.",
+      });
+    } catch (error) {
+       console.error("Error deleting all contacts: ", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível excluir todos os contatos.",
+        variant: "destructive",
+      });
+    } finally {
+        setIsDeletingAll(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -160,10 +227,28 @@ export default function ContactsPage() {
           />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
-            <Upload className="mr-2 h-4 w-4" />
-            Exportar
-          </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" disabled={contacts.length === 0 || isDeletingAll}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {isDeletingAll ? 'Excluindo...' : 'Excluir Todos'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Essa ação não pode ser desfeita. Isso excluirá permanentemente todos os seus contatos.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleDeleteAllContacts} className="bg-destructive hover:bg-destructive/90">
+                    Sim, excluir tudo
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           <Button asChild>
             <Link href="/dashboard/contacts/new">
                 <PlusCircle className="mr-2 h-4 w-4" />
@@ -180,12 +265,13 @@ export default function ContactsPage() {
               <TableHead>Produto</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Data do Último Contato</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
                 <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center">
+                    <TableCell colSpan={5} className="h-24 text-center">
                        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
                     </TableCell>
                 </TableRow>
@@ -200,6 +286,7 @@ export default function ContactsPage() {
                       <div>
                         <div className="font-medium">{contact.name}</div>
                         <div className="text-sm text-muted-foreground">{contact.email}</div>
+                        {contact.phone && <div className="text-xs text-muted-foreground">{contact.phone}</div>}
                       </div>
                     </div>
                   </TableCell>
@@ -210,11 +297,45 @@ export default function ContactsPage() {
                   <TableCell>
                     {format(contact.lastContact, "dd 'de' MMM. 'de' yyyy", { locale: ptBR })}
                   </TableCell>
+                   <TableCell className="text-right">
+                    <AlertDialog>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Abrir menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                           <AlertDialogTrigger asChild>
+                             <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/50">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                             </DropdownMenuItem>
+                           </AlertDialogTrigger>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                       <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Essa ação não pode ser desfeita. Isso excluirá permanentemente o contato de <span className="font-bold">{contact.name}</span>.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDeleteContact(contact.id)} className="bg-destructive hover:bg-destructive/90">
+                              Sim, excluir
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                  </TableCell>
                 </TableRow>
               ))
             ) : (
                  <TableRow>
-                    <TableCell colSpan={4} className="h-24 text-center">
+                    <TableCell colSpan={5} className="h-24 text-center">
                         {user ? 'Nenhum contato encontrado.' : 'Faça login para ver seus contatos.'}
                     </TableCell>
                 </TableRow>
