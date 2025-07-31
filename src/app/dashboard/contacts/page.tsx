@@ -29,15 +29,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Search, PlusCircle, CheckCircle, Clock, XCircle, Loader2, MoreHorizontal, Trash2 } from "lucide-react"
+import { Search, PlusCircle, CheckCircle, Clock, XCircle, Loader2, MoreHorizontal, Trash2, Pencil } from "lucide-react"
 import { app, db } from '@/lib/firebase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -137,11 +137,16 @@ export default function ContactsPage() {
       setLoading(false);
     }, (error) => {
       console.error("Error fetching contacts: ", error);
+      toast({
+        title: "Erro de Consulta",
+        description: "Ocorreu um erro ao buscar seus contatos. Verifique se os índices do Firestore estão configurados corretamente.",
+        variant: "destructive"
+      })
       setLoading(false);
     });
 
     return () => unsubscribeSnapshot();
-  }, [user]);
+  }, [user, toast]);
 
   const filteredContacts = useMemo(() => {
     if (!searchTerm) {
@@ -307,6 +312,13 @@ export default function ContactsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                           <DropdownMenuItem asChild>
+                             <Link href={`/dashboard/contacts/${contact.id}`}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Editar
+                             </Link>
+                           </DropdownMenuItem>
+                           <DropdownMenuSeparator />
                            <AlertDialogTrigger asChild>
                              <DropdownMenuItem className="text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-900/50">
                                 <Trash2 className="mr-2 h-4 w-4" />
