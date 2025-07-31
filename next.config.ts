@@ -18,7 +18,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  serverExternalPackages: ['puppeteer-core', 'puppeteer', 'whatsapp-web.js'],
+  serverExternalPackages: ['puppeteer-core', 'puppeteer', 'whatsapp-web.js', 'chrome-aws-lambda'],
 };
 
 export default nextConfig;
