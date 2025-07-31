@@ -94,7 +94,7 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen w-full">
         <AppSidebar user={user} onLogout={handleLogout} />
         <main className="w-full">
           <header className="flex items-center justify-between p-6 border-b bg-card">
