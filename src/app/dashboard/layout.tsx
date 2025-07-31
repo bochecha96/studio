@@ -81,9 +81,9 @@ export default function DashboardLayout({
   }
   
   let headerTitle = "Painel";
-  if (pathname === '/dashboard/settings') {
+  if (pathname.startsWith('/dashboard/settings')) {
     headerTitle = "Configurações";
-  } else if (pathname === '/dashboard/contacts') {
+  } else if (pathname.startsWith('/dashboard/contacts')) {
     headerTitle = "Contatos";
   }
 
@@ -156,7 +156,7 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton href="/dashboard/contacts" asChild isActive={pathname === '/dashboard/contacts'}>
+            <SidebarMenuButton href="/dashboard/contacts" asChild isActive={pathname.startsWith('/dashboard/contacts')}>
               <Link href="/dashboard/contacts">
                 <Users />
                 Contatos
@@ -164,7 +164,7 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton href="/dashboard/settings" asChild isActive={pathname === '/dashboard/settings'}>
+            <SidebarMenuButton href="/dashboard/settings" asChild isActive={pathname.startsWith('/dashboard/settings')}>
               <Link href="/dashboard/settings">
                 <Settings />
                 Configurações

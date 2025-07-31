@@ -1,6 +1,7 @@
-
 "use client"
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -17,60 +18,22 @@ import {
   AvatarImage,
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Search, Upload, PlusCircle, CheckCircle, Clock, XCircle } from "lucide-react"
+import { Search, Upload, PlusCircle, CheckCircle, Clock, XCircle, Loader2 } from "lucide-react"
+import { db } from '@/lib/firebase';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
-const contacts = [
-  {
-    name: "Alice Johnson",
-    email: "alice@example.com",
-    product: "Ebook 'JavaScript Avançado'",
-    status: "Recuperado",
-    lastContact: "28 de jul. de 2024",
-    initials: "AJ",
-  },
-  {
-    name: "Bob Williams",
-    email: "bob@example.com",
-    product: "Curso Online 'Mestres do React'",
-    status: "Pendente",
-    lastContact: "28 de jul. de 2024",
-    initials: "BW",
-  },
-  {
-    name: "Charlie Brown",
-    email: "charlie@example.com",
-    product: "Assinatura 'Ferramentas de Design Pro'",
-    status: "Pendente",
-    lastContact: "27 de jul. de 2024",
-    initials: "CB",
-  },
-  {
-    name: "Diana Miller",
-    email: "diana@example.com",
-    product: "Ebook 'JavaScript Avançado'",
-    status: "Perdido",
-    lastContact: "27 de jul. de 2024",
-    initials: "DM",
-  },
-  {
-    name: "Ethan Davis",
-    email: "ethan@example.com",
-    product: "Curso Online 'Mestres do React'",
-    status: "Recuperado",
-    lastContact: "26 de jul. de 2024",
-    initials: "ED",
-  },
-  {
-    name: "Fiona Garcia",
-    email: "fiona@example.com",
-    product: "Assinatura 'Ferramentas de Design Pro'",
-    status: "Recuperado",
-    lastContact: "26 de jul. de 2024",
-    initials: "FG",
-  },
-]
 
-const StatusBadge = ({ status }: { status: string }) => {
+interface Contact {
+  id: string;
+  name: string;
+  email: string;
+  product: string;
+  status: 'Recuperado' | 'Pendente' | 'Perdido';
+  lastContact: Date;
+}
+
+const StatusBadge = ({ status }: { status: Contact['status'] }) => {
   switch (status) {
     case 'Recuperado':
       return (
@@ -100,6 +63,53 @@ const StatusBadge = ({ status }: { status: string }) => {
 
 
 export default function ContactsPage() {
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const q = query(collection(db, 'contacts'), orderBy('lastContact', 'desc'));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const contactsData: Contact[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        contactsData.push({
+          id: doc.id,
+          name: data.name,
+          email: data.email,
+          product: data.product,
+          status: data.status,
+          lastContact: data.lastContact.toDate(),
+        });
+      });
+      setContacts(contactsData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching contacts: ", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const filteredContacts = useMemo(() => {
+    if (!searchTerm) {
+      return contacts;
+    }
+    return contacts.filter(contact =>
+      contact.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [contacts, searchTerm]);
+  
+  const getInitials = (name: string) => {
+    const names = name.split(' ');
+    if (names.length > 1) {
+      return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
+
   return (
     <div className="space-y-6">
       <div>
@@ -111,16 +121,23 @@ export default function ContactsPage() {
       <div className="flex items-center justify-between gap-4">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar contatos..." className="pl-10" />
+          <Input 
+            placeholder="Buscar contatos..." 
+            className="pl-10" 
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
         <div className="flex gap-2">
           <Button variant="outline">
             <Upload className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <Button>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Adicionar Contato
+          <Button asChild>
+            <Link href="/dashboard/contacts/new">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Adicionar Contato
+            </Link>
           </Button>
         </div>
       </div>
@@ -135,26 +152,42 @@ export default function ContactsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {contacts.map((contact, index) => (
-              <TableRow key={index}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarFallback>{contact.initials}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="font-medium">{contact.name}</div>
-                      <div className="text-sm text-muted-foreground">{contact.email}</div>
+            {loading ? (
+                <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center">
+                       <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                    </TableCell>
+                </TableRow>
+            ) : filteredContacts.length > 0 ? (
+              filteredContacts.map((contact) => (
+                <TableRow key={contact.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <Avatar>
+                        <AvatarFallback>{getInitials(contact.name)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="font-medium">{contact.name}</div>
+                        <div className="text-sm text-muted-foreground">{contact.email}</div>
+                      </div>
                     </div>
-                  </div>
-                </TableCell>
-                <TableCell>{contact.product}</TableCell>
-                <TableCell>
-                  <StatusBadge status={contact.status} />
-                </TableCell>
-                <TableCell>{contact.lastContact}</TableCell>
-              </TableRow>
-            ))}
+                  </TableCell>
+                  <TableCell>{contact.product}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={contact.status} />
+                  </TableCell>
+                  <TableCell>
+                    {format(contact.lastContact, "dd 'de' MMM. 'de' yyyy", { locale: ptBR })}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+                 <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center">
+                        Nenhum contato encontrado.
+                    </TableCell>
+                </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
