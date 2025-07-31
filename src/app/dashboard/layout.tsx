@@ -171,14 +171,6 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
-           <SidebarMenuItem>
-            <SidebarMenuButton href="#" asChild>
-              <Link href="#">
-                <AlertTriangle />
-                Status do Sistema
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="flex-row items-center gap-2">
