@@ -21,7 +21,7 @@ import {
 export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-8">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-3xl font-bold tracking-tight">Visão Geral</h2>
         <div className="flex items-center space-x-2">
           <Button variant="outline">7 dias</Button>
