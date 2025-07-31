@@ -163,7 +163,6 @@ const generateQrCodeFlow = ai.defineFlow(
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           console.log('Timeout reached for QR code generation or authentication.');
-          // Don't call destroy here, as finally block will handle it.
           reject(new Error('Timeout: Process took too long. Please try again.'));
         }, QR_CODE_TIMEOUT);
       });
@@ -174,13 +173,11 @@ const generateQrCodeFlow = ai.defineFlow(
 
     } catch (error) {
         console.error("Flow error:", error);
-        // The finally block will handle cleanup
         throw error; // Re-throw the error to be caught by the caller
     } finally {
         if (timeoutId) {
             clearTimeout(timeoutId);
         }
-        // Cleanup the client created in this specific flow run
         await destroyClient(currentFlowClient);
     }
   }
