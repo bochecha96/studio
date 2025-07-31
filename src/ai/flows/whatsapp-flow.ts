@@ -49,57 +49,77 @@ const generateQrCodeFlow = ai.defineFlow(
     outputSchema: GenerateQrCodeOutputSchema,
   },
   async () => {
-    await cleanupClient();
+    let qrPromise: Promise<GenerateQrCodeOutput>;
 
-    client = new Client({
-      authStrategy: new LocalAuth(),
-      puppeteer: {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      },
-    });
+    try {
+        await cleanupClient();
 
-    const qrPromise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
-      const handleAuthenticationFailure = (msg: string) => {
-        console.error('AUTHENTICATION FAILURE', msg);
-        cleanupClient();
-        reject(new Error('Authentication failure.'));
-      };
+        client = new Client({
+            authStrategy: new LocalAuth(),
+            puppeteer: {
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            },
+        });
 
-      const handleClientReady = () => {
-        console.log('Client is ready!');
-      };
-      
-      const handleAuthenticated = () => {
-          console.log('AUTHENTICATED');
-      };
+        qrPromise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
+            const handleAuthenticationFailure = (msg: string) => {
+                console.error('AUTHENTICATION FAILURE', msg);
+                cleanupClient();
+                reject(new Error('Authentication failure.'));
+            };
 
-      const handleDisconnected = (reason: any) => {
-          console.log('Client was logged out', reason);
-          cleanupClient();
-      };
+            const handleClientReady = () => {
+                console.log('Client is ready!');
+            };
 
-      const handleQrCode = async (qr: string) => {
-        console.log('QR RECEIVED', qr);
-        try {
-          const qrCodeDataUri = await qrcode.toDataURL(qr);
-          resolve({ qr: qrCodeDataUri, status: 'pending' });
-        } catch (err) {
-          reject(err);
-        } finally {
-           // Clean up specific listeners after resolving
-           client?.removeListener('auth_failure', handleAuthenticationFailure);
-           client?.removeListener('ready', handleClientReady);
-        }
-      };
+            const handleAuthenticated = () => {
+                console.log('AUTHENTICATED');
+            };
 
-      client.once('qr', handleQrCode);
-      client.once('ready', handleClientReady);
-      client.once('authenticated', handleAuthenticated);
-      client.once('auth_failure', handleAuthenticationFailure);
-      client.once('disconnected', handleDisconnected);
-    });
+            const handleDisconnected = (reason: any) => {
+                console.log('Client was logged out', reason);
+                cleanupClient();
+            };
 
+            const handleQrCode = async (qr: string) => {
+                console.log('QR RECEIVED. Printing to terminal...');
+                qrcode.toString(qr, { type: 'terminal' }, (err, url) => {
+                    if (err) {
+                        console.error("Error generating QR for terminal", err);
+                        return;
+                    }
+                    console.log(url);
+                });
+
+                try {
+                    const qrCodeDataUri = await qrcode.toDataURL(qr);
+                    resolve({ qr: qrCodeDataUri, status: 'pending' });
+                } catch (err) {
+                    reject(err);
+                } finally {
+                    client?.removeListener('auth_failure', handleAuthenticationFailure);
+                    client?.removeListener('ready', handleClientReady);
+                }
+            };
+            
+            client.once('qr', handleQrCode);
+            client.once('ready', handleClientReady);
+            client.once('authenticated', handleAuthenticated);
+            client.once('auth_failure', handleAuthenticationFailure);
+            client.once('disconnected', handleDisconnected);
+        });
+        
+        client.initialize().catch(err => {
+            console.error("Initialization error:", err);
+            // Don't reject here; let the timeout handle it to avoid race conditions.
+        });
+
+    } catch (error) {
+        await cleanupClient();
+        throw error;
+    }
+    
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => {
         cleanupClient();
@@ -107,18 +127,6 @@ const generateQrCodeFlow = ai.defineFlow(
       }, QR_CODE_TIMEOUT)
     );
 
-    try {
-      // Initialize the client. This must be called to start the process.
-      client.initialize().catch(err => {
-          console.error("Initialization error:", err);
-          cleanupClient();
-          // We don't reject here because the timeout/qr promise will handle it.
-      });
-
-      return await Promise.race([qrPromise, timeoutPromise]);
-    } catch (error) {
-        await cleanupClient();
-        throw error;
-    }
+    return Promise.race([qrPromise, timeoutPromise]);
   }
 );
