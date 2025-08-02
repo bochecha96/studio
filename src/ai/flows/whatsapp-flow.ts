@@ -11,7 +11,6 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
-import chromium from 'chrome-aws-lambda';
 import path from 'path';
 
 
@@ -70,20 +69,22 @@ const generateQrCodeFlow = ai.defineFlow(
       // Always clean up any existing client before starting a new one.
       await destroyClient(currentClient);
       
-      const executablePath = await chromium.executablePath;
-
-      if (!executablePath) {
-        throw new Error('Chromium executable not found. `chrome-aws-lambda` may not be installed or configured correctly.');
-      }
-      
-      console.log(`Using Chromium executable at: ${executablePath}`);
+      console.log(`Initializing client without specific puppeteer config.`);
 
       currentFlowClient = new Client({
         authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), '.wweb_auth') }),
         puppeteer: {
           headless: true,
-          executablePath: executablePath,
-          args: chromium.args,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process', // <- this one doesn't works in Windows
+            '--disable-gpu'
+          ],
         },
       });
       currentClient = currentFlowClient;
@@ -178,7 +179,8 @@ const generateQrCodeFlow = ai.defineFlow(
         if (timeoutId) {
             clearTimeout(timeoutId);
         }
-        await destroyClient(currentFlowClient);
+        // Don't destroy the client here if it was authenticated
+        // await destroyClient(currentFlowClient);
     }
   }
 );
