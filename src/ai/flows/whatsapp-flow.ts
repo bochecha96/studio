@@ -69,7 +69,7 @@ const generateQrCodeFlow = ai.defineFlow(
       // Always clean up any existing client before starting a new one.
       await destroyClient(currentClient);
       
-      console.log(`Initializing client without specific puppeteer config.`);
+      console.log(`Initializing client with default puppeteer config.`);
 
       currentFlowClient = new Client({
         authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), '.wweb_auth') }),
@@ -173,8 +173,6 @@ const generateQrCodeFlow = ai.defineFlow(
         if (timeoutId) {
             clearTimeout(timeoutId);
         }
-        // Don't destroy the client here if it was authenticated
-        // await destroyClient(currentFlowClient);
     }
   }
 );
