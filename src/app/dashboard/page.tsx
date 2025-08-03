@@ -1,3 +1,8 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { getAuth, onAuthStateChanged, User } from "firebase/auth"
+import { doc, onSnapshot } from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -16,9 +21,53 @@ import {
   TrendingUp,
   DollarSign,
   MessageSquareText,
+  Loader2,
 } from "lucide-react"
+import { app, db } from "@/lib/firebase"
+
+interface UserStats {
+  messagesSent: number;
+  // Add other stats here in the future
+}
 
 export default function DashboardPage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [stats, setStats] = useState<UserStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const auth = getAuth(app)
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser)
+      if (!currentUser) {
+        setLoading(false)
+        setStats(null)
+      }
+    })
+    return () => unsubscribeAuth()
+  }, [auth])
+
+  useEffect(() => {
+    if (!user) return
+
+    setLoading(true)
+    const statsRef = doc(db, "user_stats", user.uid)
+    const unsubscribeStats = onSnapshot(statsRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setStats(docSnap.data() as UserStats)
+      } else {
+        setStats({ messagesSent: 0 }) // Default stats if none exist
+      }
+      setLoading(false)
+    }, (error) => {
+      console.error("Error fetching user stats:", error)
+      setStats({ messagesSent: 0 })
+      setLoading(false)
+    })
+
+    return () => unsubscribeStats()
+  }, [user])
+
   return (
     <div className="max-w-7xl mx-auto space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -70,7 +119,11 @@ export default function DashboardPage() {
             <MessageSquareText className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">0</div>
+             {loading ? (
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              ) : (
+                <div className="text-3xl font-bold">{stats?.messagesSent ?? 0}</div>
+              )}
           </CardContent>
         </Card>
       </div>

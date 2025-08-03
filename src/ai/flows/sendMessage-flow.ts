@@ -6,7 +6,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { type Client } from 'whatsapp-web.js';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, increment, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 const ContactSchema = z.object({
@@ -95,6 +95,10 @@ const sendMessageFlow = ai.defineFlow(
           await updateDoc(contactRef, {
             status: 'Contatado'
           });
+
+          // Increment the messagesSent counter for the user
+          const userStatsRef = doc(db, 'user_stats', contact.userId);
+          await setDoc(userStatsRef, { messagesSent: increment(1) }, { merge: true });
           
           console.log(`Successfully sent message and updated status for contact ${contact.id}`);
         } catch (error) {
