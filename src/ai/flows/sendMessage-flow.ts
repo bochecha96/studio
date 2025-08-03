@@ -49,6 +49,7 @@ Cliente: {{{name}}}
 Produto: {{{product}}}
 
 Gere apenas o texto da mensagem a ser enviada.`,
+  model: 'openai/gpt-4o'
 });
 
 
