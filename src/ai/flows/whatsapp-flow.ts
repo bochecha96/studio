@@ -12,9 +12,13 @@ import { z } from 'genkit';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 import path from 'path';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { sendMessageFlow } from './sendMessage-flow';
 
-
-const GenerateQrCodeInputSchema = z.object({});
+const GenerateQrCodeInputSchema = z.object({
+    userId: z.string().describe("The ID of the user initiating the connection."),
+});
 export type GenerateQrCodeInput = z.infer<typeof GenerateQrCodeInputSchema>;
 
 const GenerateQrCodeOutputSchema = z.object({
@@ -23,13 +27,20 @@ const GenerateQrCodeOutputSchema = z.object({
 });
 export type GenerateQrCodeOutput = z.infer<typeof GenerateQrCodeOutputSchema>;
 
+interface Contact {
+  id: string;
+  name: string;
+  phone?: string;
+  product: string;
+  userId: string;
+}
+
 let currentClient: Client | null = null; 
 const QR_CODE_TIMEOUT = 70000;
 
 async function destroyClient(clientToDestroy: Client | null) {
   if (clientToDestroy) {
     try {
-      // Check if the browser is connected before trying to close it.
       const isConnected = await clientToDestroy.pupBrowser?.isConnected();
       if (isConnected) {
         console.log('Attempting to destroy active client session...');
@@ -41,8 +52,7 @@ async function destroyClient(clientToDestroy: Client | null) {
     } catch (e) {
       console.error('Error destroying client:', e);
     } finally {
-       // Clear all listeners to prevent memory leaks
-      clientToDestroy.removeAllListeners();
+       clientToDestroy.removeAllListeners();
       if (currentClient === clientToDestroy) {
         currentClient = null;
         console.log('Global client reference cleared.');
@@ -50,6 +60,31 @@ async function destroyClient(clientToDestroy: Client | null) {
     }
   }
 }
+
+async function fetchPendingContacts(userId: string): Promise<Contact[]> {
+  try {
+    console.log(`Fetching pending contacts for userId: ${userId}`);
+    const q = query(collection(db, 'contacts'), where('userId', '==', userId), where('status', '==', 'Pendente'));
+    const querySnapshot = await getDocs(q);
+    const contacts: Contact[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      contacts.push({
+        id: doc.id,
+        name: data.name,
+        phone: data.phone,
+        product: data.product,
+        userId: data.userId
+      });
+    });
+    console.log(`Found ${contacts.length} pending contacts.`);
+    return contacts;
+  } catch (error) {
+    console.error("Error fetching pending contacts:", error);
+    return [];
+  }
+}
+
 
 export async function generateQrCode(input: GenerateQrCodeInput): Promise<GenerateQrCodeOutput> {
   return generateQrCodeFlow(input);
@@ -61,18 +96,17 @@ const generateQrCodeFlow = ai.defineFlow(
     inputSchema: GenerateQrCodeInputSchema,
     outputSchema: GenerateQrCodeOutputSchema,
   },
-  async () => {
+  async ({ userId }) => {
     let timeoutId: NodeJS.Timeout | undefined;
     let currentFlowClient: Client | null = null;
 
     try {
-      // Always clean up any existing client before starting a new one.
       await destroyClient(currentClient);
       
-      console.log(`Initializing client with default puppeteer config.`);
+      console.log(`Initializing client with puppeteer config.`);
 
       currentFlowClient = new Client({
-        authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), '.wweb_auth') }),
+        authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), `.wweb_auth_${userId}`) }),
         puppeteer: {
           headless: true,
           args: [
@@ -105,8 +139,21 @@ const generateQrCodeFlow = ai.defineFlow(
           reject(new Error('Authentication failure.'));
         };
 
-        const handleClientReady = () => {
+        const handleClientReady = async () => {
           console.log('Client is ready!');
+          
+          try {
+            const pendingContacts = await fetchPendingContacts(userId);
+            if (pendingContacts.length > 0 && client) {
+               console.log("Starting to send messages to pending contacts...");
+               await sendMessageFlow({ contacts: pendingContacts, client });
+            } else {
+               console.log("No pending contacts to message.");
+            }
+          } catch(e) {
+            console.error("Error processing pending contacts:", e);
+          }
+          
           cleanupListeners();
           resolve({ status: 'authenticated' });
         };
@@ -136,7 +183,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
           try {
             const qrCodeDataUri = await qrcode.toDataURL(qr);
-            cleanupListeners(); // Important to cleanup here to avoid multiple resolves
+            // Don't cleanup here, wait for ready or auth
             resolve({ qr: qrCodeDataUri, status: 'pending' });
           } catch (err) {
             cleanupListeners();
@@ -168,7 +215,8 @@ const generateQrCodeFlow = ai.defineFlow(
 
     } catch (error) {
         console.error("Flow error:", error);
-        throw error; // Re-throw the error to be caught by the caller
+        await destroyClient(currentFlowClient);
+        throw error; 
     } finally {
         if (timeoutId) {
             clearTimeout(timeoutId);

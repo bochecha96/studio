@@ -42,7 +42,7 @@ const formSchema = z.object({
   email: z.string().email({ message: "Por favor, insira um email válido." }),
   phone: z.string().optional(),
   product: z.string().min(2, { message: "O nome do produto é obrigatório." }),
-  status: z.enum(["Pendente", "Recuperado", "Perdido"]),
+  status: z.enum(["Pendente", "Recuperado", "Perdido", "Contatado"]),
 })
 
 export default function EditContactPage() {
@@ -221,6 +221,7 @@ export default function EditContactPage() {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="Pendente">Pendente</SelectItem>
+                          <SelectItem value="Contatado">Contatado</SelectItem>
                           <SelectItem value="Recuperado">Recuperado</SelectItem>
                           <SelectItem value="Perdido">Perdido</SelectItem>
                         </SelectContent>

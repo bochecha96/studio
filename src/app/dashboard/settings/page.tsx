@@ -43,7 +43,7 @@ export default function SettingsPage() {
         setUser(currentUser)
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
-          const storedStatus = localStorage.getItem("whatsappStatus") as ConnectionStatus | null;
+          const storedStatus = localStorage.getItem(`whatsappStatus_${currentUser.uid}`) as ConnectionStatus | null;
           if (storedStatus) {
             setStatus(storedStatus);
           } else {
@@ -60,22 +60,24 @@ export default function SettingsPage() {
   }, [auth])
 
   useEffect(() => {
-    if (status !== 'loading') { // Don't save loading state
-        localStorage.setItem("whatsappStatus", status);
+    if (status !== 'loading' && user) { 
+        localStorage.setItem(`whatsappStatus_${user.uid}`, status);
     }
-  }, [status]);
+  }, [status, user]);
   
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     if (status === 'loading' && qrCode) {
         timeoutId = setTimeout(() => {
-            setStatus('error');
-            setQrCode(null);
-            toast({
-                title: "Tempo Esgotado",
-                description: "Você demorou muito para escanear o QR Code. Tente novamente.",
-                variant: "destructive",
-            });
+            if (status === 'loading') { // Check again in case it connected
+                setStatus('error');
+                setQrCode(null);
+                toast({
+                    title: "Tempo Esgotado",
+                    description: "Você demorou muito para escanear o QR Code. Tente novamente.",
+                    variant: "destructive",
+                });
+            }
         }, 60000); // 60s to scan
     }
     return () => clearTimeout(timeoutId);
@@ -83,29 +85,36 @@ export default function SettingsPage() {
 
 
   const handleGenerateQrCode = async () => {
+    if (!user) {
+        toast({ title: "Erro", description: "Usuário não autenticado.", variant: "destructive" });
+        return;
+    }
     setStatus("loading")
     setQrCode(null)
     try {
-      const result = await generateQrCode({})
+      const result = await generateQrCode({ userId: user.uid })
       
       if (result.qr) {
         setQrCode(result.qr)
-      } else {
-        // This case might happen if client is already authenticated without sending a QR
-        if (result.status === 'authenticated') {
-            handleAssumeConnected();
-        } else {
-            throw new Error("Não foi possível gerar o QR Code.")
-        }
+      } 
+      
+      if (result.status === 'authenticated') {
+         handleAssumeConnected();
+      } else if (!result.qr) {
+         // This case might happen if client is already authenticated without sending a QR
+         throw new Error("Não foi possível gerar o QR Code, mas o cliente já pode estar autenticado.")
       }
     } catch (error: any) {
       console.error(error)
-      setStatus("error")
-      toast({
-        title: "Erro na Conexão",
-        description: error.message || "Não foi possível conectar. Tente novamente.",
-        variant: "destructive",
-      })
+      // Check if it's a timeout error we set, and don't double-toast
+      if (!error.message.includes('Timeout')) {
+          setStatus("error")
+          toast({
+            title: "Erro na Conexão",
+            description: error.message || "Não foi possível conectar. Tente novamente.",
+            variant: "destructive",
+          })
+      }
     }
   }
 
@@ -114,14 +123,18 @@ export default function SettingsPage() {
     setQrCode(null);
     toast({
         title: "Conexão estabelecida",
-        description: "Seu WhatsApp foi conectado com sucesso.",
+        description: "Seu WhatsApp foi conectado com sucesso e as mensagens de recuperação foram enviadas.",
     });
   }
   
   const handleDisconnect = () => {
-    // In a real app, you would also need a backend call to client.destroy()
     setStatus("disconnected")
     setQrCode(null)
+    if (user) {
+      localStorage.removeItem(`whatsappStatus_${user.uid}`);
+      // Also clear auth data to force re-scan
+      localStorage.removeItem(`wwebjs_auth_${user.uid}`);
+    }
     toast({
         title: "Desconectado",
         description: "Sua sessão do WhatsApp foi encerrada.",
@@ -229,7 +242,7 @@ export default function SettingsPage() {
                     <QrCode className="h-16 w-16 text-muted-foreground" />
                  </div>
                  <p className="text-muted-foreground">{status === 'error' ? 'Ocorreu um erro.' : 'Nenhum QR gerado ainda.'}</p>
-                 <Button onClick={handleGenerateQrCode} disabled={status === 'loading'}>
+                 <Button onClick={handleGenerateQrCode} disabled={status === 'loading' || loadingUser}>
                     <QrCode className="mr-2 h-4 w-4" />
                     Gerar novo QR Code
                  </Button>
