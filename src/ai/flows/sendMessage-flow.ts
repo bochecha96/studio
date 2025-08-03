@@ -5,17 +5,18 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { Client } from 'whatsapp-web.js';
+import { type Client } from 'whatsapp-web.js';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-const ContactSchema = z.object({
+export const ContactSchema = z.object({
     id: z.string(),
     name: z.string(),
     phone: z.string().optional(),
     product: z.string(),
     userId: z.string(),
 });
+export type Contact = z.infer<typeof ContactSchema>;
 
 const SendMessageInputSchema = z.object({
   contacts: z.array(ContactSchema),

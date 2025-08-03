@@ -14,9 +14,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info } from "lucide-react"
+import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info, Send } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { generateQrCode } from "@/ai/flows/whatsapp-flow"
+import { resendMessages } from "@/ai/flows/resendMessages-flow"
 import { app } from "@/lib/firebase"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -34,6 +35,7 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
+  const [isSendingTest, setIsSendingTest] = useState(false)
   const { toast } = useToast()
   const auth = getAuth(app)
 
@@ -43,9 +45,12 @@ export default function SettingsPage() {
         setUser(currentUser)
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
-          // Load status from local storage only once when user is confirmed
           const storedStatus = localStorage.getItem(`whatsappStatus_${currentUser.uid}`) as ConnectionStatus | null;
-          setStatus(storedStatus || "disconnected");
+          if (storedStatus === 'connected') {
+            setStatus('connected');
+          } else {
+            setStatus('disconnected');
+          }
         }
       } else {
         setUser(null)
@@ -57,7 +62,6 @@ export default function SettingsPage() {
   }, [auth])
 
   useEffect(() => {
-    // Save status to local storage whenever it changes
     if (user) { 
         localStorage.setItem(`whatsappStatus_${user.uid}`, status);
     }
@@ -75,19 +79,20 @@ export default function SettingsPage() {
       
       if (result.qr) {
         setQrCode(result.qr)
-        // Status remains 'loading' while QR is shown
+        // Status remains 'loading' while QR is shown. The flow will resolve with 'authenticated' when ready.
       } 
       
       if (result.status === 'authenticated') {
          handleAssumeConnected();
       } else if (!result.qr) {
          // This can happen if the client was already authenticated on the server
-         // and the 'ready' event fired immediately.
+         // and the 'ready' event fired immediately without a new QR code.
          handleAssumeConnected();
       }
     } catch (error: any) {
-      console.error(error)
+      console.error("Error in handleGenerateQrCode:", error)
       setStatus("error")
+      setQrCode(null);
       toast({
         title: "Erro na Conexão",
         description: error.message || "Não foi possível conectar. Tente novamente.",
@@ -106,16 +111,16 @@ export default function SettingsPage() {
   }
   
   const handleDisconnect = () => {
-    // Note: This is a client-side visual disconnect.
+    // This is a client-side visual disconnect.
     // A robust solution would involve a flow to call client.destroy() on the server.
     setStatus("disconnected")
     setQrCode(null)
     if (user) {
-      localStorage.removeItem(`whatsappStatus_${user.uid}`);
+      localStorage.setItem(`whatsappStatus_${user.uid}`, 'disconnected');
     }
     toast({
         title: "Desconectado",
-        description: "Sua sessão do WhatsApp foi encerrada visualmente. Para garantir, desconecte pelo seu celular.",
+        description: "Sua sessão do WhatsApp foi encerrada. Conecte novamente para enviar mensagens.",
     })
   }
   
@@ -128,6 +133,38 @@ export default function SettingsPage() {
         description: "URL do Webhook copiada para a área de transferência.",
     })
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleTestSend = async () => {
+    if (!user) {
+       toast({ title: "Erro", description: "Você não está logado.", variant: "destructive" });
+       return;
+    }
+    setIsSendingTest(true);
+    try {
+        const result = await resendMessages({userId: user.uid});
+        if (result.success) {
+            toast({
+                title: "Operação Concluída",
+                description: result.message
+            });
+        } else {
+             toast({
+                title: "Erro ao Enviar",
+                description: result.message,
+                variant: "destructive"
+            });
+        }
+    } catch (error: any) {
+         toast({
+            title: "Erro Inesperado",
+            description: "Ocorreu um erro ao tentar enviar as mensagens de teste.",
+            variant: "destructive"
+        });
+        console.error("Error sending test messages:", error);
+    } finally {
+        setIsSendingTest(false);
+    }
   }
 
   const getStatusInfo = () => {
@@ -231,10 +268,16 @@ export default function SettingsPage() {
                     <CheckCircle className="h-16 w-16 text-green-500" />
                  </div>
                  <p className="text-muted-foreground">Seu número está conectado e pronto para uso.</p>
-                 <Button variant="destructive" onClick={handleDisconnect}>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Desconectar
-                 </Button>
+                 <div className="flex flex-col sm:flex-row gap-2">
+                    <Button variant="destructive" onClick={handleDisconnect}>
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Desconectar
+                    </Button>
+                    <Button onClick={handleTestSend} disabled={isSendingTest}>
+                        {isSendingTest ? <Loader className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
+                        {isSendingTest ? "Enviando..." : "Testar Envio"}
+                    </Button>
+                 </div>
                 </>
             )}
           </div>

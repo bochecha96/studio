@@ -12,9 +12,9 @@ import { z } from 'genkit';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 import path from 'path';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { sendMessageFlow } from './sendMessage-flow';
+import { sendMessageFlow, type Contact } from './sendMessage-flow';
 
 const GenerateQrCodeInputSchema = z.object({
     userId: z.string().describe("The ID of the user initiating the connection."),
@@ -27,13 +27,6 @@ const GenerateQrCodeOutputSchema = z.object({
 });
 export type GenerateQrCodeOutput = z.infer<typeof GenerateQrCodeOutputSchema>;
 
-interface Contact {
-  id: string;
-  name: string;
-  phone?: string;
-  product: string;
-  userId: string;
-}
 
 let currentClient: Client | null = null; 
 const QR_CODE_TIMEOUT = 70000;
@@ -41,14 +34,13 @@ const QR_CODE_TIMEOUT = 70000;
 async function destroyClient(clientToDestroy: Client | null) {
   if (clientToDestroy) {
     try {
+      console.log('Attempting to destroy active client session...');
       // It's possible pupBrowser is null if the client never launched fully.
-      const isConnected = await clientToDestroy.pupBrowser?.isConnected();
-      if (isConnected) {
-        console.log('Attempting to destroy active client session...');
+      if (clientToDestroy.pupBrowser) {
         await clientToDestroy.destroy();
         console.log('Client destroyed successfully.');
       } else {
-        console.log('Client reference exists but browser is not connected. Clearing reference.');
+        console.log('Client reference exists but browser was not initialized. Clearing reference.');
       }
     } catch (e) {
       console.error('Error destroying client:', e);
@@ -119,7 +111,7 @@ const generateQrCodeFlow = ai.defineFlow(
       });
       currentClient = currentFlowClient;
 
-      const qrPromise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
+      const connectionPromise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
         const client = currentFlowClient;
 
         if (!client) {
@@ -143,6 +135,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
         const handleClientReady = async () => {
           console.log('Client is ready!');
+          cleanupListeners();
           
           try {
             const pendingContacts = await fetchPendingContacts(userId);
@@ -156,14 +149,13 @@ const generateQrCodeFlow = ai.defineFlow(
             console.error("Error processing pending contacts:", e);
           }
           
-          cleanupListeners();
           resolve({ status: 'authenticated' });
         };
 
         const handleAuthenticated = () => {
           console.log('AUTHENTICATED');
-          cleanupListeners();
-          // Do not resolve here, wait for 'ready' to send messages.
+          // Do not resolve here. Wait for 'ready' to ensure the client can send messages.
+          // The UI will update based on the final resolution in 'ready' or 'qr'.
         };
 
         const handleDisconnected = (reason: any) => {
@@ -185,7 +177,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
           try {
             const qrCodeDataUri = await qrcode.toDataURL(qr);
-            // Don't cleanup here, wait for ready or auth
+            // Don't cleanup here, wait for ready or auth failure
             resolve({ qr: qrCodeDataUri, status: 'pending' });
           } catch (err) {
             cleanupListeners();
@@ -195,7 +187,7 @@ const generateQrCodeFlow = ai.defineFlow(
         
         client.once('qr', handleQrCode);
         client.once('ready', handleClientReady);
-        client.on('authenticated', handleAuthenticated); // Use .on to catch potential re-auth
+        client.once('authenticated', handleAuthenticated); 
         client.once('auth_failure', handleAuthenticationFailure);
         client.once('disconnected', handleDisconnected);
       });
@@ -211,7 +203,7 @@ const generateQrCodeFlow = ai.defineFlow(
         }, QR_CODE_TIMEOUT);
       });
   
-      const result = await Promise.race([qrPromise, timeoutPromise]);
+      const result = await Promise.race([connectionPromise, timeoutPromise]);
       
       return result;
 
