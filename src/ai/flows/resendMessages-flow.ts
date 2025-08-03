@@ -7,7 +7,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { sendMessageFlow, type Contact } from './sendMessage-flow';
+import { sendMessage, type Contact } from './sendMessage-flow';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import path from 'path';
 
@@ -45,7 +45,7 @@ export async function resendMessages(input: ResendMessagesInput): Promise<{succe
 }
 
 
-export const resendMessagesFlow = ai.defineFlow(
+const resendMessagesFlow = ai.defineFlow(
   {
     name: 'resendMessagesFlow',
     inputSchema: ResendMessagesInputSchema,
@@ -91,7 +91,7 @@ export const resendMessagesFlow = ai.defineFlow(
 
       if (pendingContacts.length > 0) {
         console.log(`Found ${pendingContacts.length} contacts. Starting message sending process.`);
-        await sendMessageFlow({ contacts: pendingContacts, client });
+        await sendMessage({ contacts: pendingContacts, client });
         console.log("Finished sending messages.");
         return { success: true, message: `Mensagens enviadas para ${pendingContacts.length} contatos pendentes.`, count: pendingContacts.length };
       } else {

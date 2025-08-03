@@ -9,7 +9,7 @@ import { type Client } from 'whatsapp-web.js';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
-export const ContactSchema = z.object({
+const ContactSchema = z.object({
     id: z.string(),
     name: z.string(),
     phone: z.string().optional(),
@@ -29,7 +29,7 @@ export async function sendMessage(input: SendMessageInput): Promise<void> {
   await sendMessageFlow(input);
 }
 
-export const sendMessageFlow = ai.defineFlow(
+const sendMessageFlow = ai.defineFlow(
   {
     name: 'sendMessageFlow',
     inputSchema: SendMessageInputSchema,

@@ -14,7 +14,7 @@ import qrcode from 'qrcode';
 import path from 'path';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { sendMessageFlow, type Contact } from './sendMessage-flow';
+import { sendMessage, type Contact } from './sendMessage-flow';
 
 const GenerateQrCodeInputSchema = z.object({
     userId: z.string().describe("The ID of the user initiating the connection."),
@@ -141,7 +141,7 @@ const generateQrCodeFlow = ai.defineFlow(
             const pendingContacts = await fetchPendingContacts(userId);
             if (pendingContacts.length > 0 && client) {
                console.log("Starting to send messages to pending contacts...");
-               await sendMessageFlow({ contacts: pendingContacts, client });
+               await sendMessage({ contacts: pendingContacts, client });
             } else {
                console.log("No pending contacts to message.");
             }
