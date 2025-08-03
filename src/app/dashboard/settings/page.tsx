@@ -29,7 +29,7 @@ type ConnectionStatus = "disconnected" | "connected" | "loading" | "error"
 
 export default function SettingsPage() {
   const [qrCode, setQrCode] = useState<string | null>(null)
-  const [status, setStatus] = useState<ConnectionStatus>("disconnected")
+  const [status, setStatus] = useState<ConnectionStatus>("loading")
   const [webhookUrl, setWebhookUrl] = useState("")
   const [copied, setCopied] = useState(false)
   const [user, setUser] = useState<User | null>(null)
@@ -43,15 +43,27 @@ export default function SettingsPage() {
         setUser(currentUser)
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
+          const storedStatus = localStorage.getItem("whatsappStatus") as ConnectionStatus | null;
+          if (storedStatus) {
+            setStatus(storedStatus);
+          } else {
+            setStatus("disconnected");
+          }
         }
       } else {
-        // Handle case where user is not logged in, maybe redirect or show error
         setUser(null)
+        setStatus("disconnected");
       }
       setLoadingUser(false)
     })
     return () => unsubscribe()
   }, [auth])
+
+  useEffect(() => {
+    if (status !== 'loading') { // Don't save loading state
+        localStorage.setItem("whatsappStatus", status);
+    }
+  }, [status]);
   
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
@@ -79,7 +91,12 @@ export default function SettingsPage() {
       if (result.qr) {
         setQrCode(result.qr)
       } else {
-        throw new Error("Não foi possível gerar o QR Code.")
+        // This case might happen if client is already authenticated without sending a QR
+        if (result.status === 'authenticated') {
+            handleAssumeConnected();
+        } else {
+            throw new Error("Não foi possível gerar o QR Code.")
+        }
       }
     } catch (error: any) {
       console.error(error)
@@ -92,7 +109,6 @@ export default function SettingsPage() {
     }
   }
 
-  // This is a placeholder for a real connection check
   const handleAssumeConnected = () => {
     setStatus("connected");
     setQrCode(null);
@@ -143,7 +159,7 @@ export default function SettingsPage() {
               Aguardando
             </Badge>
           ),
-          description: "Escaneie o QR Code para conectar.",
+          description: qrCode ? "Escaneie o QR Code para conectar." : "Aguardando status...",
         }
       case "error":
          return {
@@ -213,7 +229,7 @@ export default function SettingsPage() {
                     <QrCode className="h-16 w-16 text-muted-foreground" />
                  </div>
                  <p className="text-muted-foreground">{status === 'error' ? 'Ocorreu um erro.' : 'Nenhum QR gerado ainda.'}</p>
-                 <Button onClick={handleGenerateQrCode}>
+                 <Button onClick={handleGenerateQrCode} disabled={status === 'loading'}>
                     <QrCode className="mr-2 h-4 w-4" />
                     Gerar novo QR Code
                  </Button>
