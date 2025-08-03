@@ -102,7 +102,8 @@ export default function SettingsPage() {
          handleAssumeConnected();
       } else if (!result.qr) {
          // This case might happen if client is already authenticated without sending a QR
-         throw new Error("Não foi possível gerar o QR Code, mas o cliente já pode estar autenticado.")
+         // We can assume connection and let the ready event handle messages.
+         handleAssumeConnected();
       }
     } catch (error: any) {
       console.error(error)
@@ -128,6 +129,8 @@ export default function SettingsPage() {
   }
   
   const handleDisconnect = () => {
+    // Note: This is a client-side disconnect. The session might still be active on the server.
+    // A more robust solution would involve a flow to call client.logout()
     setStatus("disconnected")
     setQrCode(null)
     if (user) {
@@ -137,7 +140,7 @@ export default function SettingsPage() {
     }
     toast({
         title: "Desconectado",
-        description: "Sua sessão do WhatsApp foi encerrada.",
+        description: "Sua sessão do WhatsApp foi encerrada nesta tela. Para garantir, desconecte pelo seu celular.",
     })
   }
   
@@ -227,7 +230,6 @@ export default function SettingsPage() {
               <>
                 <Image src={qrCode} alt="QR Code do WhatsApp" width={200} height={200} />
                 <p className="text-muted-foreground">Escaneie o código acima com seu celular.</p>
-                <Button onClick={handleAssumeConnected} variant="outline">Já escaneei, conectar</Button>
               </>
             )}
             {status === "loading" && !qrCode && (
@@ -241,7 +243,7 @@ export default function SettingsPage() {
                  <div className="p-4 bg-muted rounded-md">
                     <QrCode className="h-16 w-16 text-muted-foreground" />
                  </div>
-                 <p className="text-muted-foreground">{status === 'error' ? 'Ocorreu um erro.' : 'Nenhum QR gerado ainda.'}</p>
+                 <p className="text-muted-foreground">{status === 'error' ? 'Ocorreu um erro. Clique para tentar novamente.' : 'Clique no botão para gerar um novo QR Code.'}</p>
                  <Button onClick={handleGenerateQrCode} disabled={status === 'loading' || loadingUser}>
                     <QrCode className="mr-2 h-4 w-4" />
                     Gerar novo QR Code

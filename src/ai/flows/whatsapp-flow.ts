@@ -41,6 +41,7 @@ const QR_CODE_TIMEOUT = 70000;
 async function destroyClient(clientToDestroy: Client | null) {
   if (clientToDestroy) {
     try {
+      // It's possible pupBrowser is null if the client never launched fully.
       const isConnected = await clientToDestroy.pupBrowser?.isConnected();
       if (isConnected) {
         console.log('Attempting to destroy active client session...');
@@ -52,6 +53,7 @@ async function destroyClient(clientToDestroy: Client | null) {
     } catch (e) {
       console.error('Error destroying client:', e);
     } finally {
+       // Always remove listeners and clear the global reference.
        clientToDestroy.removeAllListeners();
       if (currentClient === clientToDestroy) {
         currentClient = null;
@@ -103,7 +105,7 @@ const generateQrCodeFlow = ai.defineFlow(
     try {
       await destroyClient(currentClient);
       
-      console.log(`Initializing client with puppeteer config.`);
+      console.log(`Initializing client with puppeteer config for user ${userId}.`);
 
       currentFlowClient = new Client({
         authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), `.wweb_auth_${userId}`) }),
@@ -161,7 +163,7 @@ const generateQrCodeFlow = ai.defineFlow(
         const handleAuthenticated = () => {
           console.log('AUTHENTICATED');
           cleanupListeners();
-          resolve({ status: 'authenticated' });
+          // Do not resolve here, wait for 'ready' to send messages.
         };
 
         const handleDisconnected = (reason: any) => {
@@ -193,7 +195,7 @@ const generateQrCodeFlow = ai.defineFlow(
         
         client.once('qr', handleQrCode);
         client.once('ready', handleClientReady);
-        client.once('authenticated', handleAuthenticated);
+        client.on('authenticated', handleAuthenticated); // Use .on to catch potential re-auth
         client.once('auth_failure', handleAuthenticationFailure);
         client.once('disconnected', handleDisconnected);
       });
