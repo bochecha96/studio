@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info, Send } from "lucide-react"
+import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info, Send, LogOut } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { generateQrCode } from "@/ai/flows/whatsapp-flow"
 import { resendMessages } from "@/ai/flows/resendMessages-flow"
@@ -25,12 +25,14 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert"
+import { clearActiveClient } from "@/ai/flows/sendNewContacts-flow"
+
 
 type ConnectionStatus = "disconnected" | "connected" | "loading" | "error"
 
 export default function SettingsPage() {
   const [qrCode, setQrCode] = useState<string | null>(null)
-  const [status, setStatus] = useState<ConnectionStatus>("disconnected")
+  const [status, setStatus] = useState<ConnectionStatus>("loading")
   const [webhookUrl, setWebhookUrl] = useState("")
   const [copied, setCopied] = useState(false)
   const [user, setUser] = useState<User | null>(null)
@@ -45,11 +47,13 @@ export default function SettingsPage() {
         setUser(currentUser)
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
+          // Check initial status from server or local storage
           const storedStatus = localStorage.getItem(`whatsappStatus_${currentUser.uid}`) as ConnectionStatus | null;
           if (storedStatus === 'connected') {
-            setStatus('connected');
+             // We assume connected, but a server-side check would be more robust
+             setStatus('connected');
           } else {
-            setStatus('disconnected');
+             setStatus('disconnected');
           }
         }
       } else {
@@ -62,7 +66,8 @@ export default function SettingsPage() {
   }, [auth])
 
   useEffect(() => {
-    if (user) { 
+    // Persist status to local storage to provide a better UX across page reloads.
+    if (user && status !== 'loading') { 
         localStorage.setItem(`whatsappStatus_${user.uid}`, status);
     }
   }, [status, user]);
@@ -80,14 +85,12 @@ export default function SettingsPage() {
       if (result.qr) {
         setQrCode(result.qr)
         // Status remains 'loading' while QR is shown. The flow will resolve with 'authenticated' when ready.
-      } 
-      
-      if (result.status === 'authenticated') {
-         handleAssumeConnected();
-      } else if (!result.qr) {
+      } else if (result.status === 'authenticated') {
+         handleConnectionSuccess(result.message);
+      } else {
          // This can happen if the client was already authenticated on the server
          // and the 'ready' event fired immediately without a new QR code.
-         handleAssumeConnected();
+         handleConnectionSuccess();
       }
     } catch (error: any) {
       console.error("Error in handleGenerateQrCode:", error)
@@ -101,26 +104,32 @@ export default function SettingsPage() {
     }
   }
 
-  const handleAssumeConnected = () => {
+  const handleConnectionSuccess = (message?: string) => {
     setStatus("connected");
     setQrCode(null);
     toast({
         title: "Conexão estabelecida!",
-        description: "Seu WhatsApp foi conectado com sucesso e as mensagens de recuperação foram enviadas aos contatos pendentes.",
+        description: message || "Seu WhatsApp foi conectado com sucesso e as mensagens de recuperação foram enviadas aos contatos pendentes.",
     });
   }
   
-  const handleDisconnect = () => {
-    // This is a client-side visual disconnect.
-    // A robust solution would involve a flow to call client.destroy() on the server.
+  const handleDisconnect = async () => {
+    if (!user) return;
+    
+    // Call backend to destroy the session
+    try {
+        await clearActiveClient(user.uid, true);
+    } catch (e) {
+        console.error("Error during server-side client destruction:", e);
+    }
+
+    // Update UI immediately
     setStatus("disconnected")
     setQrCode(null)
-    if (user) {
-      localStorage.setItem(`whatsappStatus_${user.uid}`, 'disconnected');
-    }
+    localStorage.setItem(`whatsappStatus_${user.uid}`, 'disconnected');
     toast({
         title: "Desconectado",
-        description: "Sua sessão do WhatsApp foi encerrada. Conecte novamente para enviar mensagens.",
+        description: "Sua sessão do WhatsApp foi encerrada no servidor.",
     })
   }
   
@@ -158,10 +167,10 @@ export default function SettingsPage() {
     } catch (error: any) {
          toast({
             title: "Erro Inesperado",
-            description: "Ocorreu um erro ao tentar enviar as mensagens de teste.",
+            description: "Ocorreu um erro ao tentar reenviar as mensagens.",
             variant: "destructive"
         });
-        console.error("Error sending test messages:", error);
+        console.error("Error resending messages:", error);
     } finally {
         setIsSendingTest(false);
     }
@@ -177,7 +186,7 @@ export default function SettingsPage() {
               Conectado
             </Badge>
           ),
-          description: "Sua sessão está ativa.",
+          description: "Sua sessão está ativa e pronta para enviar mensagens.",
         }
       case "loading":
          return {
@@ -187,7 +196,7 @@ export default function SettingsPage() {
               Aguardando
             </Badge>
           ),
-          description: qrCode ? "Escaneie o QR Code para conectar." : "Gerando QR Code...",
+          description: qrCode ? "Escaneie o QR Code para conectar." : "Iniciando conexão...",
         }
       case "error":
          return {
@@ -238,48 +247,50 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="p-4 border rounded-lg flex flex-col items-center justify-center text-center space-y-4 min-h-[280px]">
-            {status === "loading" && qrCode && (
+             {loadingUser ? (
+                 <div className="flex flex-col items-center gap-4">
+                    <Loader className="h-16 w-16 text-primary animate-spin" />
+                    <p className="text-muted-foreground">Carregando dados do usuário...</p>
+                 </div>
+            ) : status === "loading" && qrCode ? (
               <>
                 <Image src={qrCode} alt="QR Code do WhatsApp" width={200} height={200} />
                 <p className="text-muted-foreground">Escaneie o código acima com seu celular.</p>
               </>
-            )}
-            {status === "loading" && !qrCode && (
+            ) : status === "loading" && !qrCode ? (
                  <div className="flex flex-col items-center gap-4">
                     <Loader className="h-16 w-16 text-primary animate-spin" />
-                    <p className="text-muted-foreground">Gerando QR Code...</p>
+                    <p className="text-muted-foreground">Estabelecendo conexão...</p>
                  </div>
-            )}
-            {(status === "disconnected" || status === "error") && (
+            ) : (status === "disconnected" || status === "error") ? (
                 <>
-                 <div className="p-4 bg-muted rounded-md">
+                 <div className="p-4 bg-muted rounded-md dark:bg-zinc-800">
                     <QrCode className="h-16 w-16 text-muted-foreground" />
                  </div>
-                 <p className="text-muted-foreground">{status === 'error' ? 'Ocorreu um erro. Clique para tentar novamente.' : 'Clique no botão para gerar um novo QR Code.'}</p>
+                 <p className="text-muted-foreground max-w-xs">{status === 'error' ? 'Ocorreu um erro. Clique para tentar novamente.' : 'Clique no botão para gerar um novo QR Code e conectar.'}</p>
                  <Button onClick={handleGenerateQrCode} disabled={loadingUser}>
                     <QrCode className="mr-2 h-4 w-4" />
-                    Gerar novo QR Code
+                    Conectar com WhatsApp
                  </Button>
                 </>
-            )}
-             {status === "connected" && (
+            ) : status === "connected" ? (
                 <>
                  <div className="p-4 bg-green-100 rounded-md dark:bg-green-900/50">
                     <CheckCircle className="h-16 w-16 text-green-500" />
                  </div>
-                 <p className="text-muted-foreground">Seu número está conectado e pronto para uso.</p>
+                 <p className="text-muted-foreground max-w-xs">Seu número está conectado e pronto para uso.</p>
                  <div className="flex flex-col sm:flex-row gap-2">
                     <Button variant="destructive" onClick={handleDisconnect}>
-                        <XCircle className="mr-2 h-4 w-4" />
+                        <LogOut className="mr-2 h-4 w-4" />
                         Desconectar
                     </Button>
                     <Button onClick={handleTestSend} disabled={isSendingTest}>
                         {isSendingTest ? <Loader className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
-                        {isSendingTest ? "Enviando..." : "Testar Envio"}
+                        {isSendingTest ? "Enviando..." : "Reenviar Pendentes"}
                     </Button>
                  </div>
                 </>
-            )}
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -287,7 +298,7 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle className="text-xl">Webhook de Vendas</CardTitle>
           <CardDescription>
-            Conecte sua plataforma de vendas (Hotmart, Kiwify, etc.) usando este webhook para receber notificações de vendas em tempo real.
+            Conecte sua plataforma de vendas (Hotmart, Kiwify, etc.) usando este webhook para adicionar novos contatos automaticamente.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -313,7 +324,7 @@ export default function SettingsPage() {
               <Info className="h-4 w-4" />
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
-                Esta URL é única para sua conta. Não a compartilhe com ninguém.
+                Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON com os campos: `customer_name`, `customer_email`, `product_name` e, opcionalmente, `customer_phone`.
               </AlertDescription>
             </Alert>
           </div>

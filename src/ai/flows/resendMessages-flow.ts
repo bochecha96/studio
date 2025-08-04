@@ -5,108 +5,54 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { sendMessage, type Contact } from './sendMessage-flow';
-import { Client, LocalAuth } from 'whatsapp-web.js';
-import path from 'path';
+import { sendNewContacts, SendNewContactsOutputSchema, getClientStatus } from './sendNewContacts-flow';
 
 const ResendMessagesInputSchema = z.object({
   userId: z.string(),
 });
 export type ResendMessagesInput = z.infer<typeof ResendMessagesInputSchema>;
 
-async function fetchPendingContacts(userId: string): Promise<Contact[]> {
-  try {
-    console.log(`Fetching pending contacts for userId: ${userId}`);
-    const q = query(collection(db, 'contacts'), where('userId', '==', userId), where('status', '==', 'Pendente'));
-    const querySnapshot = await getDocs(q);
-    const contacts: Contact[] = [];
-    querySnapshot.forEach((doc) => {
-      const data = doc.data();
-      contacts.push({
-        id: doc.id,
-        name: data.name,
-        phone: data.phone,
-        product: data.product,
-        userId: data.userId
-      });
-    });
-    console.log(`Found ${contacts.length} pending contacts.`);
-    return contacts;
-  } catch (error) {
-    console.error("Error fetching pending contacts:", error);
-    return [];
-  }
-}
-
-export async function resendMessages(input: ResendMessagesInput): Promise<{success: boolean, message: string, count: number}> {
+export async function resendMessages(input: ResendMessagesInput): Promise<z.infer<typeof SendNewContactsOutputSchema>> {
   return resendMessagesFlow(input);
 }
-
 
 const resendMessagesFlow = ai.defineFlow(
   {
     name: 'resendMessagesFlow',
     inputSchema: ResendMessagesInputSchema,
-    outputSchema: z.object({
-        success: z.boolean(),
-        message: z.string(),
-        count: z.number(),
-    }),
+    outputSchema: SendNewContactsOutputSchema,
   },
   async ({ userId }) => {
-    let client: Client | null = null;
-    try {
-      console.log(`Initializing client to resend messages for user ${userId}.`);
-      
-      client = new Client({
-        authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), `.wweb_auth_${userId}`) }),
-        puppeteer: {
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-          ],
-        },
-      });
+     try {
+        console.log(`Manually triggering resend for user ${userId}.`);
+        
+        // First, check if the client is even connected.
+        const status = getClientStatus(userId);
+        if (status !== 'connected') {
+            return {
+                success: false,
+                message: "Não é possível enviar mensagens. O WhatsApp não está conectado. Por favor, vá para as Configurações para conectar.",
+                count: 0
+            };
+        }
 
-      const readyPromise = new Promise<void>((resolve, reject) => {
-        client!.once('ready', () => {
-            console.log("Client is ready for resending.");
-            resolve();
-        });
-        client!.once('auth_failure', (msg) => reject(new Error(`Authentication failure: ${msg}`)));
-        client!.once('disconnected', (reason) => reject(new Error(`Client disconnected: ${reason}`)));
-      });
+        // If connected, delegate to the main sending flow.
+        const result = await sendNewContacts({ userId });
+        
+        // Customize the message for the manual trigger context
+        if (result.success) {
+             if (result.count > 0) {
+                 return { success: true, message: `Mensagens enviadas para ${result.count} contatos pendentes.`, count: result.count };
+             } else {
+                 return { success: true, message: "Nenhum contato pendente encontrado para enviar mensagens.", count: 0 };
+             }
+        } else {
+            return result; // Propagate the error message from the sendNewContacts flow
+        }
 
-      console.log("Initializing client...");
-      await client.initialize();
-      
-      console.log("Waiting for client to be ready...");
-      await readyPromise;
-      
-      console.log("Client is ready. Fetching contacts to resend.");
-      const pendingContacts = await fetchPendingContacts(userId);
-
-      if (pendingContacts.length > 0) {
-        console.log(`Found ${pendingContacts.length} contacts. Starting message sending process.`);
-        await sendMessage({ contacts: pendingContacts, client });
-        console.log("Finished sending messages.");
-        return { success: true, message: `Mensagens enviadas para ${pendingContacts.length} contatos pendentes.`, count: pendingContacts.length };
-      } else {
-        console.log("No pending contacts to message.");
-        return { success: true, message: "Nenhum contato pendente encontrado para enviar mensagens.", count: 0 };
-      }
     } catch (error: any) {
       console.error("Error in resendMessagesFlow:", error);
-      return { success: false, message: error.message || 'Falha ao reenviar mensagens. Você está conectado?', count: 0 };
-    } finally {
-        if (client) {
-            console.log("Destroying resend client...");
-            await client.destroy();
-            console.log("Resend client destroyed.");
-        }
+      return { success: false, message: error.message || 'Falha ao reenviar mensagens.', count: 0 };
     }
   }
 );
