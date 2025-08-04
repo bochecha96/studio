@@ -37,7 +37,7 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Search, PlusCircle, CheckCircle, Clock, XCircle, Loader2, MoreHorizontal, Trash2, Pencil, Send } from "lucide-react"
+import { Search, PlusCircle, CheckCircle, Clock, XCircle, Loader2, MoreHorizontal, Trash2, Pencil, Send, MessageCircle } from "lucide-react"
 import { app, db } from '@/lib/firebase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -50,7 +50,7 @@ interface Contact {
   email: string;
   phone?: string;
   product: string;
-  status: 'Recuperado' | 'Pendente' | 'Perdido' | 'Contatado';
+  status: 'Recuperado' | 'Pendente' | 'Perdido' | 'Contatado' | 'Respondido';
   lastContact: Date;
   userId: string;
 }
@@ -77,6 +77,13 @@ const StatusBadge = ({ status }: { status: Contact['status'] }) => {
             <Send className="h-3 w-3" />
             {status}
           </Badge>
+        );
+    case 'Respondido':
+        return (
+            <Badge variant="outline" className="text-purple-500 border-purple-500 flex items-center gap-1">
+            <MessageCircle className="h-3 w-3" />
+            {status}
+            </Badge>
         );
     case 'Perdido':
       return (

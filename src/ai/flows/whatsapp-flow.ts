@@ -12,7 +12,7 @@ import { z } from 'genkit';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 import path from 'path';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendMessage, type Contact } from './sendMessage-flow';
 
@@ -35,7 +35,6 @@ async function destroyClient(clientToDestroy: Client | null) {
   if (clientToDestroy) {
     try {
       console.log('Attempting to destroy active client session...');
-      // It's possible pupBrowser is null if the client never launched fully.
       if (clientToDestroy.pupBrowser) {
         await clientToDestroy.destroy();
         console.log('Client destroyed successfully.');
@@ -45,7 +44,6 @@ async function destroyClient(clientToDestroy: Client | null) {
     } catch (e) {
       console.error('Error destroying client:', e);
     } finally {
-       // Always remove listeners and clear the global reference.
        clientToDestroy.removeAllListeners();
       if (currentClient === clientToDestroy) {
         currentClient = null;
@@ -77,6 +75,40 @@ async function fetchPendingContacts(userId: string): Promise<Contact[]> {
     console.error("Error fetching pending contacts:", error);
     return [];
   }
+}
+
+async function handleIncomingMessage(message: any, userId: string) {
+    try {
+        const chatId = message.from;
+        const phone = chatId.split('@')[0];
+        console.log(`New message from ${phone}: "${message.body}"`);
+
+        // Find the contact by phone number for the specific user
+        const q = query(
+            collection(db, 'contacts'),
+            where('userId', '==', userId),
+            where('phone', '==', phone),
+            where('status', '==', 'Contatado') // Only act on contacts we've already messaged
+        );
+
+        const querySnapshot = await getDocs(q);
+        if (querySnapshot.empty) {
+            console.log(`No pending contact found for ${phone} and user ${userId}. Ignoring.`);
+            return;
+        }
+
+        querySnapshot.forEach(async (docSnapshot) => {
+            console.log(`Contact ${docSnapshot.id} (${docSnapshot.data().name}) replied. Updating status.`);
+            const contactRef = doc(db, 'contacts', docSnapshot.id);
+            await updateDoc(contactRef, {
+                status: 'Respondido'
+            });
+            console.log(`Status for contact ${docSnapshot.id} updated to 'Respondido'.`);
+        });
+
+    } catch (error) {
+        console.error("Error handling incoming message:", error);
+    }
 }
 
 
@@ -124,6 +156,7 @@ const generateQrCodeFlow = ai.defineFlow(
             client.removeListener('authenticated', handleAuthenticated);
             client.removeListener('auth_failure', handleAuthenticationFailure);
             client.removeListener('disconnected', handleDisconnected);
+            client.removeListener('message', (message) => handleIncomingMessage(message, userId));
         };
 
         const handleAuthenticationFailure = (msg: string) => {
@@ -135,6 +168,9 @@ const generateQrCodeFlow = ai.defineFlow(
 
         const handleClientReady = async () => {
           console.log('Client is ready!');
+          
+          client.on('message', (message) => handleIncomingMessage(message, userId));
+
           cleanupListeners();
           
           try {
@@ -154,8 +190,6 @@ const generateQrCodeFlow = ai.defineFlow(
 
         const handleAuthenticated = () => {
           console.log('AUTHENTICATED');
-          // Do not resolve here. Wait for 'ready' to ensure the client can send messages.
-          // The UI will update based on the final resolution in 'ready' or 'qr'.
         };
 
         const handleDisconnected = (reason: any) => {
@@ -177,7 +211,6 @@ const generateQrCodeFlow = ai.defineFlow(
 
           try {
             const qrCodeDataUri = await qrcode.toDataURL(qr);
-            // Don't cleanup here, wait for ready or auth failure
             resolve({ qr: qrCodeDataUri, status: 'pending' });
           } catch (err) {
             cleanupListeners();
