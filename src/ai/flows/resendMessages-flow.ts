@@ -4,7 +4,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import { sendNewContacts, SendNewContactsOutputSchema, getClientStatus } from './sendNewContacts-flow';
 
 const ResendMessagesInputSchema = z.object({
@@ -27,7 +27,7 @@ const resendMessagesFlow = ai.defineFlow(
         console.log(`Manually triggering resend for user ${userId}.`);
         
         // First, check if the client is even connected.
-        const status = getClientStatus(userId);
+        const status = await getClientStatus(userId);
         if (status !== 'connected') {
             return {
                 success: false,

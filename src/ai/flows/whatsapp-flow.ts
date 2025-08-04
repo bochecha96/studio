@@ -8,7 +8,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
 import path from 'path';
@@ -81,7 +81,7 @@ const generateQrCodeFlow = ai.defineFlow(
     let timeoutId: NodeJS.Timeout | undefined;
     
     // If a client is already connected and authenticated for this user, don't create a new one.
-    if (getClientStatus(userId) === 'connected') {
+    if ((await getClientStatus(userId)) === 'connected') {
         console.log(`User ${userId} is already connected.`);
         return { status: 'authenticated', message: 'Já conectado.' };
     }
@@ -112,10 +112,10 @@ const generateQrCodeFlow = ai.defineFlow(
             client.removeListener('disconnected', handleDisconnected);
         };
 
-        const handleAuthenticationFailure = (msg: string) => {
+        const handleAuthenticationFailure = async (msg: string) => {
           console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
           cleanupListeners();
-          clearActiveClient(userId);
+          await clearActiveClient(userId);
           reject(new Error('Authentication failure.'));
         };
 
@@ -124,7 +124,7 @@ const generateQrCodeFlow = ai.defineFlow(
           
           client.on('message', (message) => handleIncomingMessage(message, userId));
           
-          setActiveClient(userId, client);
+          await setActiveClient(userId, client);
 
           cleanupListeners();
           
@@ -140,10 +140,10 @@ const generateQrCodeFlow = ai.defineFlow(
           console.log(`AUTHENTICATED for ${userId}`);
         };
 
-        const handleDisconnected = (reason: any) => {
+        const handleDisconnected = async (reason: any) => {
           console.log(`Client for ${userId} was logged out:`, reason);
           cleanupListeners();
-          clearActiveClient(userId);
+          await clearActiveClient(userId);
           reject(new Error(`Client disconnected: ${reason}`));
         };
 
@@ -185,7 +185,7 @@ const generateQrCodeFlow = ai.defineFlow(
         if (client.pupBrowser) {
             await client.destroy();
         }
-        clearActiveClient(userId);
+        await clearActiveClient(userId);
         throw error; 
     } finally {
         if (timeoutId) {

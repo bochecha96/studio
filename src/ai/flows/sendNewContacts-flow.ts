@@ -5,12 +5,11 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendMessage, type Contact } from './sendMessage-flow';
-import { Client, LocalAuth } from 'whatsapp-web.js';
-import path from 'path';
+import { Client } from 'whatsapp-web.js';
 
 // In-memory store for active clients, mapping userId to Client instance.
 const activeClients = new Map<string, Client>();
@@ -20,7 +19,7 @@ const activeClients = new Map<string, Client>();
  * @param userId The user's ID.
  * @param client The authenticated client instance.
  */
-export function setActiveClient(userId: string, client: Client) {
+export async function setActiveClient(userId: string, client: Client): Promise<void> {
     // If there's an old client for this user, destroy it first.
     if (activeClients.has(userId)) {
         console.log(`Replacing existing client for user ${userId}.`);
@@ -41,7 +40,7 @@ export function setActiveClient(userId: string, client: Client) {
  * @param userId The user's ID.
  * @param destroy Whether to call the client's destroy method.
  */
-export async function clearActiveClient(userId: string, destroy: boolean = true) {
+export async function clearActiveClient(userId: string, destroy: boolean = true): Promise<void> {
     if (activeClients.has(userId)) {
         const client = activeClients.get(userId)!;
         console.log(`Clearing active client for user ${userId}. Destroy: ${destroy}`);
@@ -62,7 +61,7 @@ export async function clearActiveClient(userId: string, destroy: boolean = true)
  * @param userId The user's ID.
  * @returns 'connected' | 'disconnected'
  */
-export function getClientStatus(userId: string): 'connected' | 'disconnected' {
+export async function getClientStatus(userId: string): Promise<'connected' | 'disconnected'> {
     return activeClients.has(userId) ? 'connected' : 'disconnected';
 }
 
