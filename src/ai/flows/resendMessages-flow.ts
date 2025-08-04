@@ -5,12 +5,21 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-import { sendNewContacts, SendNewContactsOutputSchema, getClientStatus } from './sendNewContacts-flow';
+import { sendNewContacts, getClientStatus } from './sendNewContacts-flow';
 
 const ResendMessagesInputSchema = z.object({
   userId: z.string(),
 });
 export type ResendMessagesInput = z.infer<typeof ResendMessagesInputSchema>;
+
+// This schema is defined here because it's used by this flow's output
+// and it cannot be exported from a 'use server' file.
+const SendNewContactsOutputSchema = z.object({
+    success: z.boolean(),
+    message: z.string(),
+    count: z.number(),
+});
+
 
 export async function resendMessages(input: ResendMessagesInput): Promise<z.infer<typeof SendNewContactsOutputSchema>> {
   return resendMessagesFlow(input);

@@ -71,7 +71,7 @@ const SendNewContactsInputSchema = z.object({
 });
 export type SendNewContactsInput = z.infer<typeof SendNewContactsInputSchema>;
 
-export const SendNewContactsOutputSchema = z.object({
+const SendNewContactsOutputSchema = z.object({
     success: z.boolean(),
     message: z.string(),
     count: z.number(),
