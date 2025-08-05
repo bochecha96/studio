@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info, Send, LogOut } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { generateQrCode } from "@/ai/flows/whatsapp-flow"
+import { generateQrCode, clearActiveClient } from "@/ai/flows/whatsapp-flow"
 import { resendMessages } from "@/ai/flows/resendMessages-flow"
 import { app } from "@/lib/firebase"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -25,10 +25,9 @@ import {
   AlertDescription,
   AlertTitle,
 } from "@/components/ui/alert"
-import { clearActiveClient } from "@/ai/flows/sendNewContacts-flow"
 
 
-type ConnectionStatus = "disconnected" | "connected" | "loading" | "error"
+type ConnectionStatus = "disconnected" | "connected" | "loading" | "error" | "pending_qr";
 
 export default function SettingsPage() {
   const [qrCode, setQrCode] = useState<string | null>(null)
@@ -41,20 +40,25 @@ export default function SettingsPage() {
   const { toast } = useToast()
   const auth = getAuth(app)
 
+  // This is a placeholder check. A real implementation should poll a backend endpoint.
+  const checkInitialStatus = useCallback(async () => {
+    if (!user) return;
+    const storedStatus = localStorage.getItem(`whatsappStatus_${user.uid}`) as ConnectionStatus | null;
+    if (storedStatus === 'connected') {
+        setStatus('connected');
+    } else {
+        setStatus('disconnected');
+    }
+  }, [user]);
+
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setLoadingUser(true);
       if (currentUser) {
         setUser(currentUser)
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
-          // Check initial status from server or local storage
-          const storedStatus = localStorage.getItem(`whatsappStatus_${currentUser.uid}`) as ConnectionStatus | null;
-          if (storedStatus === 'connected') {
-             // We assume connected, but a server-side check would be more robust
-             setStatus('connected');
-          } else {
-             setStatus('disconnected');
-          }
         }
       } else {
         setUser(null)
@@ -66,7 +70,10 @@ export default function SettingsPage() {
   }, [auth])
 
   useEffect(() => {
-    // Persist status to local storage to provide a better UX across page reloads.
+      checkInitialStatus();
+  }, [user, checkInitialStatus]);
+
+  useEffect(() => {
     if (user && status !== 'loading') { 
         localStorage.setItem(`whatsappStatus_${user.uid}`, status);
     }
@@ -79,28 +86,28 @@ export default function SettingsPage() {
     }
     setStatus("loading")
     setQrCode(null)
+
+    // A long-running operation. We don't await the full result here.
+    // We expect generateQrCode to return the QR code first.
     try {
-      const result = await generateQrCode({ userId: user.uid })
-      
-      if (result.qr) {
-        setQrCode(result.qr)
-        // Status remains 'loading' while QR is shown. The flow will resolve with 'authenticated' when ready.
-      } else if (result.status === 'authenticated') {
-         handleConnectionSuccess(result.message);
-      } else {
-         // This can happen if the client was already authenticated on the server
-         // and the 'ready' event fired immediately without a new QR code.
-         handleConnectionSuccess();
-      }
+        const result = await generateQrCode({ userId: user.uid });
+        if (result.qr) {
+            setQrCode(result.qr);
+            setStatus("pending_qr");
+        } else if (result.status === 'authenticated') {
+            handleConnectionSuccess(result.message);
+        } else {
+            setStatus("loading"); // It might be already authenticated and getting ready
+        }
     } catch (error: any) {
-      console.error("Error in handleGenerateQrCode:", error)
-      setStatus("error")
-      setQrCode(null);
-      toast({
-        title: "Erro na Conexão",
-        description: error.message || "Não foi possível conectar. Tente novamente.",
-        variant: "destructive",
-      })
+        console.error("Error in handleGenerateQrCode:", error);
+        setStatus("error");
+        setQrCode(null);
+        toast({
+            title: "Erro na Conexão",
+            description: error.message || "Não foi possível conectar. Tente novamente.",
+            variant: "destructive",
+        });
     }
   }
 
@@ -109,24 +116,21 @@ export default function SettingsPage() {
     setQrCode(null);
     toast({
         title: "Conexão estabelecida!",
-        description: message || "Seu WhatsApp foi conectado com sucesso e as mensagens de recuperação foram enviadas aos contatos pendentes.",
+        description: message || "Seu WhatsApp foi conectado com sucesso.",
     });
   }
   
   const handleDisconnect = async () => {
     if (!user) return;
     
-    // Call backend to destroy the session
     try {
-        await clearActiveClient(user.uid, true);
+        await clearActiveClient({ userId: user.uid });
     } catch (e) {
         console.error("Error during server-side client destruction:", e);
     }
 
-    // Update UI immediately
     setStatus("disconnected")
     setQrCode(null)
-    localStorage.setItem(`whatsappStatus_${user.uid}`, 'disconnected');
     toast({
         title: "Desconectado",
         description: "Sua sessão do WhatsApp foi encerrada no servidor.",
@@ -150,6 +154,7 @@ export default function SettingsPage() {
        return;
     }
     setIsSendingTest(true);
+    toast({ title: "Iniciando Envio", description: "Suas mensagens estão sendo preparadas. Isso pode levar um minuto."})
     try {
         const result = await resendMessages({userId: user.uid});
         if (result.success) {
@@ -180,43 +185,28 @@ export default function SettingsPage() {
     switch (status) {
       case "connected":
         return {
-          badge: (
-            <Badge variant="default" className="flex items-center gap-1 bg-green-500 text-white hover:bg-green-600">
-              <CheckCircle className="h-3 w-3" />
-              Conectado
-            </Badge>
-          ),
-          description: "Sua sessão está ativa e pronta para enviar mensagens.",
+          badge: <Badge variant="default" className="flex items-center gap-1 bg-green-500 text-white hover:bg-green-600"><CheckCircle className="h-3 w-3" />Conectado</Badge>,
+          description: "Sua sessão está ativa e pronta para enviar e receber mensagens.",
+        }
+       case "pending_qr":
+         return {
+          badge: <Badge variant="secondary" className="flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" />Aguardando</Badge>,
+          description: "Escaneie o QR Code com seu celular para conectar.",
         }
       case "loading":
          return {
-          badge: (
-            <Badge variant="secondary" className="flex items-center gap-1">
-              <Loader className="h-3 w-3 animate-spin" />
-              Aguardando
-            </Badge>
-          ),
-          description: qrCode ? "Escaneie o QR Code para conectar." : "Iniciando conexão...",
+          badge: <Badge variant="secondary" className="flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" />Carregando</Badge>,
+          description: "Iniciando conexão com o WhatsApp...",
         }
       case "error":
          return {
-          badge: (
-            <Badge variant="destructive" className="flex items-center gap-1">
-              <XCircle className="h-3 w-3" />
-              Erro
-            </Badge>
-          ),
-          description: "Falha ao tentar conectar.",
+          badge: <Badge variant="destructive" className="flex items-center gap-1"><XCircle className="h-3 w-3" />Erro</Badge>,
+          description: "Falha ao tentar conectar. Clique para tentar novamente.",
         }
       case "disconnected":
       default:
         return {
-          badge: (
-            <Badge variant="destructive" className="flex items-center gap-1">
-              <XCircle className="h-3 w-3" />
-              Desconectado
-            </Badge>
-          ),
+          badge: <Badge variant="destructive" className="flex items-center gap-1"><XCircle className="h-3 w-3" />Desconectado</Badge>,
           description: "Nenhuma sessão ativa encontrada.",
         }
     }
@@ -252,12 +242,12 @@ export default function SettingsPage() {
                     <Loader className="h-16 w-16 text-primary animate-spin" />
                     <p className="text-muted-foreground">Carregando dados do usuário...</p>
                  </div>
-            ) : status === "loading" && qrCode ? (
+            ) : status === "pending_qr" && qrCode ? (
               <>
                 <Image src={qrCode} alt="QR Code do WhatsApp" width={200} height={200} />
-                <p className="text-muted-foreground">Escaneie o código acima com seu celular.</p>
+                <p className="text-muted-foreground">Aguardando a leitura do código...</p>
               </>
-            ) : status === "loading" && !qrCode ? (
+            ) : status === "loading" ? (
                  <div className="flex flex-col items-center gap-4">
                     <Loader className="h-16 w-16 text-primary animate-spin" />
                     <p className="text-muted-foreground">Estabelecendo conexão...</p>
@@ -268,7 +258,7 @@ export default function SettingsPage() {
                     <QrCode className="h-16 w-16 text-muted-foreground" />
                  </div>
                  <p className="text-muted-foreground max-w-xs">{status === 'error' ? 'Ocorreu um erro. Clique para tentar novamente.' : 'Clique no botão para gerar um novo QR Code e conectar.'}</p>
-                 <Button onClick={handleGenerateQrCode} disabled={loadingUser}>
+                 <Button onClick={handleGenerateQrCode} disabled={loadingUser || status === 'loading'}>
                     <QrCode className="mr-2 h-4 w-4" />
                     Conectar com WhatsApp
                  </Button>
@@ -325,11 +315,4 @@ export default function SettingsPage() {
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON com os campos: `customer_name`, `customer_email`, `product_name` e, opcionalmente, `customer_phone`.
-              </AlertDescription>
-            </Alert>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
+              </Aler

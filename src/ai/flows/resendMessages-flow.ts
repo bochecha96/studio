@@ -5,7 +5,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-import { sendNewContacts, getClientStatus } from './sendNewContacts-flow';
+import { sendNewContacts } from './sendNewContacts-flow';
 
 const ResendMessagesInputSchema = z.object({
   userId: z.string(),
@@ -34,18 +34,8 @@ const resendMessagesFlow = ai.defineFlow(
   async ({ userId }) => {
      try {
         console.log(`Manually triggering resend for user ${userId}.`);
-        
-        // First, check if the client is even connected.
-        const status = await getClientStatus(userId);
-        if (status !== 'connected') {
-            return {
-                success: false,
-                message: "Não é possível enviar mensagens. O WhatsApp não está conectado. Por favor, vá para as Configurações para conectar.",
-                count: 0
-            };
-        }
 
-        // If connected, delegate to the main sending flow.
+        // Delegate to the main sending flow.
         const result = await sendNewContacts({ userId });
         
         // Customize the message for the manual trigger context
@@ -56,12 +46,13 @@ const resendMessagesFlow = ai.defineFlow(
                  return { success: true, message: "Nenhum contato pendente encontrado para enviar mensagens.", count: 0 };
              }
         } else {
+            // Add a more specific error message if connection failed
+            if (result.message.includes("Authentication failure")) {
+                 return { success: false, message: "Não é possível enviar mensagens. O WhatsApp não está conectado. Por favor, vá para as Configurações para conectar.", count: 0 };
+            }
             return result; // Propagate the error message from the sendNewContacts flow
         }
 
     } catch (error: any) {
       console.error("Error in resendMessagesFlow:", error);
       return { success: false, message: error.message || 'Falha ao reenviar mensagens.', count: 0 };
-    }
-  }
-);
