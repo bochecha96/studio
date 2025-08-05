@@ -94,6 +94,7 @@ const generateQrCodeFlow = ai.defineFlow(
                 const qrCodeDataUri = await qrcode.toDataURL(qr);
                 resolve({ qr: qrCodeDataUri, status: 'pending' });
             } catch (err) {
+                console.error("Failed to generate QR code data URI:", err);
                 reject(new Error("Failed to generate QR code data URI."));
             }
         });
@@ -102,6 +103,7 @@ const generateQrCodeFlow = ai.defineFlow(
             console.log(`Client for ${userId} is ready! Setting up for message receiving.`);
             client.on('message', (message) => handleIncomingMessage(message, userId));
             
+            // Trigger an initial send on successful connection
             sendNewContacts({ userId }).catch(error => {
                 console.error(`Error during initial sendNewContacts for user ${userId}:`, error);
             });
@@ -123,6 +125,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
         client.initialize().catch(err => {
             console.error('Client initialization error:', err);
+            client.destroy().catch(() => {});
             reject(new Error("Failed to initialize WhatsApp client."));
         });
     });

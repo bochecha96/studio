@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info, Send, LogOut } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { generateQrCode, clearActiveClient } from "@/ai/flows/whatsapp-flow"
+import { generateQrCode } from "@/ai/flows/whatsapp-flow"
 import { resendMessages } from "@/ai/flows/resendMessages-flow"
 import { app } from "@/lib/firebase"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -122,18 +122,13 @@ export default function SettingsPage() {
   
   const handleDisconnect = async () => {
     if (!user) return;
-    
-    try {
-        await clearActiveClient({ userId: user.uid });
-    } catch (e) {
-        console.error("Error during server-side client destruction:", e);
-    }
 
     setStatus("disconnected")
     setQrCode(null)
+    localStorage.removeItem(`whatsappStatus_${user.uid}`);
     toast({
         title: "Desconectado",
-        description: "Sua sessão do WhatsApp foi encerrada no servidor.",
+        description: "Sua sessão do WhatsApp foi encerrada.",
     })
   }
   
