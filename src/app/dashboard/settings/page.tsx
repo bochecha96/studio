@@ -315,4 +315,11 @@ export default function SettingsPage() {
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON com os campos: `customer_name`, `customer_email`, `product_name` e, opcionalmente, `customer_phone`.
-              </Aler
+              </AlertDescription>
+            </Alert>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

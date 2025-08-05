@@ -56,3 +56,6 @@ const resendMessagesFlow = ai.defineFlow(
     } catch (error: any) {
       console.error("Error in resendMessagesFlow:", error);
       return { success: false, message: error.message || 'Falha ao reenviar mensagens.', count: 0 };
+    }
+  }
+);
