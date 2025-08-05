@@ -1,8 +1,8 @@
 'use server';
 /**
  * @fileOverview A flow for handling WhatsApp Web connections.
- * This flow now only manages the QR code generation and long-lived connection
- * for receiving messages. Sending is handled by a separate, on-demand flow.
+ * This flow now manages the QR code generation and long-lived connection
+ * for receiving messages and supports sending messages via a managed client.
  */
 
 import { ai } from '@/ai/genkit';
@@ -13,6 +13,8 @@ import path from 'path';
 import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
+import { setClient, deleteClient, getClientStatus } from '@/lib/whatsapp-client-manager';
+
 
 const GenerateQrCodeInputSchema = z.object({
     userId: z.string().describe("The ID of the user initiating the connection."),
@@ -25,6 +27,16 @@ const GenerateQrCodeOutputSchema = z.object({
   message: z.string().optional().describe("An optional message about the status.")
 });
 export type GenerateQrCodeOutput = z.infer<typeof GenerateQrCodeOutputSchema>;
+
+const ClientStatusInputSchema = z.object({
+  userId: z.string(),
+});
+export type ClientStatusInput = z.infer<typeof ClientStatusInputSchema>;
+
+const ClientStatusOutputSchema = z.object({
+  status: z.string(),
+});
+export type ClientStatusOutput = z.infer<typeof ClientStatusOutputSchema>;
 
 
 async function handleIncomingMessage(message: any, userId: string) {
@@ -101,6 +113,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
         client.on('ready', () => {
             console.log(`Client for ${userId} is ready! Setting up for message receiving.`);
+            setClient(userId, client);
             client.on('message', (message) => handleIncomingMessage(message, userId));
             
             // Trigger an initial send on successful connection
@@ -113,21 +126,61 @@ const generateQrCodeFlow = ai.defineFlow(
         
         client.on('auth_failure', (msg) => {
           console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
+          deleteClient(userId);
           client.destroy().catch(() => {});
           reject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'));
         });
 
         client.on('disconnected', (reason) => {
           console.log(`Client for ${userId} was logged out:`, reason);
+          deleteClient(userId);
           client.destroy().catch(() => {});
           reject(new Error(`Cliente desconectado: ${reason}`));
         });
 
         client.initialize().catch(err => {
             console.error('Client initialization error:', err);
+            deleteClient(userId);
             client.destroy().catch(() => {});
             reject(new Error("Failed to initialize WhatsApp client."));
         });
     });
   }
+);
+
+
+const clearClientInputSchema = z.object({
+    userId: z.string(),
+});
+export type ClearClientInput = z.infer<typeof clearClientInputSchema>;
+
+export async function clearActiveClient(input: ClearClientInput): Promise<void> {
+    return clearActiveClientFlow(input);
+}
+
+const clearActiveClientFlow = ai.defineFlow(
+    {
+        name: 'clearActiveClientFlow',
+        inputSchema: clearClientInputSchema,
+    },
+    async ({ userId }) => {
+        console.log(`Received request to clear active client for user ${userId}.`);
+        deleteClient(userId);
+    }
+);
+
+export async function checkClientStatus(input: ClientStatusInput): Promise<ClientStatusOutput> {
+    return checkClientStatusFlow(input);
+}
+
+const checkClientStatusFlow = ai.defineFlow(
+    {
+        name: 'checkClientStatusFlow',
+        inputSchema: ClientStatusInputSchema,
+        outputSchema: ClientStatusOutputSchema,
+    },
+    async ({ userId }) => {
+        const status = getClientStatus(userId);
+        return { status };
+    }
 );

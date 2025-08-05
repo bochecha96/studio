@@ -1,7 +1,7 @@
 'use server';
 /**
  * @fileOverview A dedicated flow for sending messages to new/pending contacts.
- * This flow now establishes a temporary connection to send messages.
+ * This flow now uses a long-lived client connection managed by the ClientManager.
  */
 
 import { ai } from '@/ai/genkit';
@@ -9,8 +9,7 @@ import { z } from 'zod';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendMessage, type Contact } from './sendMessage-flow';
-import { Client, LocalAuth } from 'whatsapp-web.js';
-import path from 'path';
+import { getClient } from '@/lib/whatsapp-client-manager';
 
 const SendNewContactsInputSchema = z.object({
   userId: z.string(),
@@ -59,42 +58,16 @@ const sendNewContactsFlow = ai.defineFlow(
   },
   async ({ userId }) => {
     console.log(`Starting sendNewContactsFlow for user ${userId}.`);
+    
+    const client = getClient(userId);
 
-    const client = new Client({
-        authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), `.wweb_auth_${userId}`) }),
-        puppeteer: {
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-          ],
-        },
-      });
+    if (!client) {
+        const errorMessage = "Não é possível enviar mensagens. O WhatsApp não está conectado. Por favor, vá para as Configurações para conectar.";
+        console.warn(errorMessage);
+        return { success: false, message: errorMessage, count: 0 };
+    }
       
     try {
-        const readyPromise = new Promise<void>((resolve, reject) => {
-             // Set a timeout for the ready event
-            const timeoutId = setTimeout(() => {
-                reject(new Error('Authentication failure: Client took too long to get ready.'));
-            }, 60000); // 60 seconds timeout
-
-            client.once('ready', () => {
-                clearTimeout(timeoutId);
-                console.log(`Client for ${userId} is ready for sending.`);
-                resolve();
-            });
-
-            client.once('auth_failure', (msg) => {
-                clearTimeout(timeoutId);
-                console.error(`AUTHENTICATION FAILURE for ${userId} in send flow:`, msg);
-                reject(new Error('Authentication failure. Please re-authenticate via Settings.'));
-            });
-
-             client.initialize().catch(reject);
-        });
-
-        await readyPromise;
-        
       console.log(`Client is ready. Fetching contacts to send for user ${userId}.`);
       const pendingContacts = await fetchPendingContacts(userId);
 
@@ -110,12 +83,6 @@ const sendNewContactsFlow = ai.defineFlow(
     } catch (error: any) {
       console.error(`Error in sendNewContactsFlow for user ${userId}:`, error);
       return { success: false, message: error.message || 'Falha ao enviar novas mensagens.', count: 0 };
-    } finally {
-        // Ensure client is destroyed after operation
-        if (client.pupBrowser) {
-             console.log(`Destroying client for user ${userId} after send flow.`);
-             await client.destroy();
-        }
     }
   }
 );

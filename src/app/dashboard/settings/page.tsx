@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info, Send, LogOut } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { generateQrCode } from "@/ai/flows/whatsapp-flow"
+import { generateQrCode, clearActiveClient, checkClientStatus } from "@/ai/flows/whatsapp-flow"
 import { resendMessages } from "@/ai/flows/resendMessages-flow"
 import { app } from "@/lib/firebase"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -40,13 +40,13 @@ export default function SettingsPage() {
   const { toast } = useToast()
   const auth = getAuth(app)
 
-  // This is a placeholder check. A real implementation should poll a backend endpoint.
   const checkInitialStatus = useCallback(async () => {
     if (!user) return;
-    const storedStatus = localStorage.getItem(`whatsappStatus_${user.uid}`) as ConnectionStatus | null;
-    if (storedStatus === 'connected') {
-        setStatus('connected');
-    } else {
+    try {
+        const result = await checkClientStatus({ userId: user.uid });
+        setStatus(result.status as ConnectionStatus);
+    } catch (error) {
+        console.error("Failed to check initial status:", error);
         setStatus('disconnected');
     }
   }, [user]);
@@ -73,11 +73,6 @@ export default function SettingsPage() {
       checkInitialStatus();
   }, [user, checkInitialStatus]);
 
-  useEffect(() => {
-    if (user && status !== 'loading') { 
-        localStorage.setItem(`whatsappStatus_${user.uid}`, status);
-    }
-  }, [status, user]);
 
   const handleGenerateQrCode = async () => {
     if (!user) {
@@ -87,8 +82,6 @@ export default function SettingsPage() {
     setStatus("loading")
     setQrCode(null)
 
-    // A long-running operation. We don't await the full result here.
-    // We expect generateQrCode to return the QR code first.
     try {
         const result = await generateQrCode({ userId: user.uid });
         if (result.qr) {
@@ -122,14 +115,21 @@ export default function SettingsPage() {
   
   const handleDisconnect = async () => {
     if (!user) return;
-
-    setStatus("disconnected")
-    setQrCode(null)
-    localStorage.removeItem(`whatsappStatus_${user.uid}`);
-    toast({
-        title: "Desconectado",
-        description: "Sua sessão do WhatsApp foi encerrada.",
-    })
+    try {
+        await clearActiveClient({ userId: user.uid });
+        setStatus("disconnected")
+        setQrCode(null)
+        toast({
+            title: "Desconectado",
+            description: "Sua sessão do WhatsApp foi encerrada.",
+        })
+    } catch(error: any) {
+         toast({
+            title: "Erro ao Desconectar",
+            description: "Não foi possível encerrar a sessão. Tente novamente.",
+            variant: "destructive"
+        });
+    }
   }
   
   const handleCopyWebhook = () => {

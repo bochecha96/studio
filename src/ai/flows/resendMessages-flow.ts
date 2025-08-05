@@ -47,7 +47,7 @@ const resendMessagesFlow = ai.defineFlow(
              }
         } else {
             // Add a more specific error message if connection failed
-            if (result.message.includes("Authentication failure")) {
+            if (result.message.includes("não está conectado")) {
                  return { success: false, message: "Não é possível enviar mensagens. O WhatsApp não está conectado. Por favor, vá para as Configurações para conectar.", count: 0 };
             }
             return result; // Propagate the error message from the sendNewContacts flow
