@@ -40,16 +40,20 @@ export default function SettingsPage() {
   const { toast } = useToast()
   const auth = getAuth(app)
 
-  const checkInitialStatus = useCallback(async () => {
-    if (!user) return;
+  const checkStatus = useCallback(async (userId: string) => {
     try {
-        const result = await checkClientStatus({ userId: user.uid });
-        setStatus(result.status as ConnectionStatus);
+      const result = await checkClientStatus({ userId });
+      setStatus(result.status as ConnectionStatus);
+      if (result.status === 'pending_qr' && !qrCode) {
+        // If server thinks we are pending but we have no QR, try to reconnect
+        handleGenerateQrCode();
+      }
     } catch (error) {
-        console.error("Failed to check initial status:", error);
-        setStatus('disconnected');
+      console.error("Failed to check status:", error);
+      // If status check fails, assume disconnected to be safe
+      setStatus('disconnected');
     }
-  }, [user]);
+  }, []);
 
 
   useEffect(() => {
@@ -70,8 +74,21 @@ export default function SettingsPage() {
   }, [auth])
 
   useEffect(() => {
-      checkInitialStatus();
-  }, [user, checkInitialStatus]);
+    if (!user) return;
+
+    // Check status immediately on user load
+    checkStatus(user.uid);
+
+    // Then check periodically
+    const intervalId = setInterval(() => {
+      // Only poll if the component is not in the middle of a connection attempt
+      if (status !== 'loading' && status !== 'pending_qr') {
+        checkStatus(user.uid);
+      }
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, [user, status, checkStatus]);
 
 
   const handleGenerateQrCode = async () => {
@@ -87,10 +104,11 @@ export default function SettingsPage() {
         if (result.qr) {
             setQrCode(result.qr);
             setStatus("pending_qr");
-        } else if (result.status === 'authenticated') {
+        } else if (result.status === 'connected') {
             handleConnectionSuccess(result.message);
         } else {
-            setStatus("loading"); // It might be already authenticated and getting ready
+             // The status might be loading or already connected from another tab
+            setStatus(result.status as ConnectionStatus);
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
