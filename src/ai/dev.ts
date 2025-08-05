@@ -4,3 +4,4 @@ import './flows/whatsapp-flow';
 import './flows/sendMessage-flow';
 import './flows/resendMessages-flow';
 import './flows/sendNewContacts-flow';
+import './flows/generateAnswer-flow';

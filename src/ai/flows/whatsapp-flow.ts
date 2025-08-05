@@ -7,13 +7,13 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import { type Message, type Client } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
-import path from 'path';
 import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
 import { setClient, deleteClient, getClientStatus } from '@/lib/whatsapp-client-manager';
+import { generateAnswer } from './generateAnswer-flow';
 
 
 const GenerateQrCodeInputSchema = z.object({
@@ -39,7 +39,7 @@ const ClientStatusOutputSchema = z.object({
 export type ClientStatusOutput = z.infer<typeof ClientStatusOutputSchema>;
 
 
-async function handleIncomingMessage(message: any, userId: string) {
+async function handleIncomingMessage(message: Message, userId: string, client: Client) {
     try {
         const chatId = message.from;
         const phone = chatId.split('@')[0];
@@ -50,23 +50,43 @@ async function handleIncomingMessage(message: any, userId: string) {
             collection(db, 'contacts'),
             where('userId', '==', userId),
             where('phone', '==', phone),
-            where('status', '==', 'Contatado') // Only act on contacts we've already messaged
+            where('status', 'in', ['Contatado', 'Respondido']) // Act on contacts we've messaged or already replied to
         );
 
         const querySnapshot = await getDocs(q);
         if (querySnapshot.empty) {
-            console.log(`No 'Contatado' contact found for ${phone} and user ${userId}. Ignoring.`);
+            console.log(`No 'Contatado' or 'Respondido' contact found for ${phone} and user ${userId}. Ignoring.`);
             return;
         }
 
-        querySnapshot.forEach(async (docSnapshot) => {
-            console.log(`Contact ${docSnapshot.id} (${docSnapshot.data().name}) replied. Updating status.`);
-            const contactRef = doc(db, 'contacts', docSnapshot.id);
-            await updateDoc(contactRef, {
-                status: 'Respondido'
-            });
-            console.log(`Status for contact ${docSnapshot.id} updated to 'Respondido'.`);
+        // Assuming one contact per phone number for a user
+        const contactDoc = querySnapshot.docs[0];
+        const contactData = contactDoc.data();
+        
+        console.log(`Contact ${contactDoc.id} (${contactData.name}) replied. Generating AI response.`);
+
+        // 1. Generate the AI-powered answer
+        const aiResponse = await generateAnswer({
+            customerName: contactData.name,
+            productName: contactData.product,
+            message: message.body
         });
+        
+        // 2. Send the AI response back to the user
+        if (aiResponse.answer) {
+             console.log(`Sending AI response to ${chatId}: "${aiResponse.answer}"`);
+             await client.sendMessage(chatId, aiResponse.answer);
+        } else {
+            console.error(`AI failed to generate an answer for contact ${contactDoc.id}.`);
+        }
+
+        // 3. Update the contact status to 'Respondido'
+        const contactRef = doc(db, 'contacts', contactDoc.id);
+        await updateDoc(contactRef, {
+            status: 'Respondido'
+        });
+        console.log(`Status for contact ${contactDoc.id} updated to 'Respondido'.`);
+
 
     } catch (error) {
         console.error("Error handling incoming message:", error);
@@ -86,27 +106,49 @@ const generateQrCodeFlow = ai.defineFlow(
   },
   async ({ userId }) => {
     
-    console.log(`Initializing client with puppeteer config for user ${userId}.`);
+    console.log(`Initializing client with local auth for user ${userId}.`);
+
+    // Avoid creating a new client if one is already connected and ready
+    if (getClientStatus(userId) === 'connected') {
+        console.log(`User ${userId} is already connected.`);
+        return { status: 'connected', message: 'Já conectado.' };
+    }
+    
+    // Dynamically import 'whatsapp-web.js'
+    const { Client, LocalAuth } = await import('whatsapp-web.js');
 
     const client = new Client({
-        authStrategy: new LocalAuth({ dataPath: path.resolve(process.cwd(), `.wweb_auth_${userId}`) }),
+        authStrategy: new LocalAuth({ dataPath: `.wweb_auth_${userId}` }),
         puppeteer: {
           headless: true,
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process', // This may help on some resource-constrained environments
+            '--disable-gpu'
           ],
         },
       });
 
     return new Promise((resolve, reject) => {
+        const cleanup = () => {
+            client.removeAllListeners();
+            client.destroy().catch(err => console.error(`Error destroying client for ${userId} during cleanup:`, err));
+        };
+
         client.on('qr', async (qr) => {
             console.log(`QR RECEIVED for ${userId}.`);
             try {
                 const qrCodeDataUri = await qrcode.toDataURL(qr);
-                resolve({ qr: qrCodeDataUri, status: 'pending' });
+                resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
+                 // Don't cleanup here, wait for ready or auth_failure
             } catch (err) {
                 console.error("Failed to generate QR code data URI:", err);
+                cleanup();
                 reject(new Error("Failed to generate QR code data URI."));
             }
         });
@@ -114,34 +156,36 @@ const generateQrCodeFlow = ai.defineFlow(
         client.on('ready', () => {
             console.log(`Client for ${userId} is ready! Setting up for message receiving.`);
             setClient(userId, client);
-            client.on('message', (message) => handleIncomingMessage(message, userId));
+            // Pass client instance to the handler
+            client.on('message', (message) => handleIncomingMessage(message, userId, client));
             
             // Trigger an initial send on successful connection
             sendNewContacts({ userId }).catch(error => {
                 console.error(`Error during initial sendNewContacts for user ${userId}:`, error);
             });
             
-            resolve({ status: 'authenticated', message: 'Já conectado.' });
+            client.removeAllListeners('qr'); // No longer need to listen for QR codes
+            client.removeAllListeners('auth_failure');
+            resolve({ status: 'connected', message: 'WhatsApp conectado com sucesso.' });
         });
         
         client.on('auth_failure', (msg) => {
           console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
           deleteClient(userId);
-          client.destroy().catch(() => {});
+          cleanup();
           reject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'));
         });
 
         client.on('disconnected', (reason) => {
           console.log(`Client for ${userId} was logged out:`, reason);
           deleteClient(userId);
-          client.destroy().catch(() => {});
-          reject(new Error(`Cliente desconectado: ${reason}`));
+          // Don't reject here as it could be an expected logout.
+          // The state will be handled by getClientStatus on the frontend.
         });
 
         client.initialize().catch(err => {
-            console.error('Client initialization error:', err);
-            deleteClient(userId);
-            client.destroy().catch(() => {});
+            console.error(`Client initialization error for ${userId}:`, err);
+            cleanup();
             reject(new Error("Failed to initialize WhatsApp client."));
         });
     });
@@ -165,7 +209,7 @@ const clearActiveClientFlow = ai.defineFlow(
     },
     async ({ userId }) => {
         console.log(`Received request to clear active client for user ${userId}.`);
-        deleteClient(userId);
+        await deleteClient(userId);
     }
 );
 
