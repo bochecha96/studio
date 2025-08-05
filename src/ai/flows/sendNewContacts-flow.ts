@@ -141,7 +141,7 @@ const sendNewContactsFlow = ai.defineFlow(
 
       if (pendingContacts.length > 0) {
         console.log(`Found ${pendingContacts.length} pending contacts for ${userId}. Starting message sending process.`);
-        await sendMessage({ contacts: pendingContacts, client });
+        await sendMessage(pendingContacts, client);
         console.log(`Finished sending messages for user ${userId}.`);
         return { success: true, message: `Mensagens enviadas para ${pendingContacts.length} contatos pendentes.`, count: pendingContacts.length };
       } else {

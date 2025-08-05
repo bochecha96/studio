@@ -18,13 +18,6 @@ const ContactSchema = z.object({
 });
 export type Contact = z.infer<typeof ContactSchema>;
 
-const SendMessageInputSchema = z.object({
-  contacts: z.array(ContactSchema),
-  client: z.any().describe("The authenticated whatsapp-web.js client instance."),
-});
-
-export type SendMessageInput = z.infer<typeof SendMessageInputSchema>;
-
 // Define the prompt for generating the recovery message
 const generateRecoveryMessagePrompt = ai.definePrompt({
   name: 'generateRecoveryMessage',
@@ -52,17 +45,7 @@ Gere apenas o texto da mensagem a ser enviada.`,
 });
 
 
-export async function sendMessage(input: SendMessageInput): Promise<void> {
-  await sendMessageFlow(input);
-}
-
-const sendMessageFlow = ai.defineFlow(
-  {
-    name: 'sendMessageFlow',
-    inputSchema: SendMessageInputSchema,
-    outputSchema: z.void(),
-  },
-  async ({ contacts, client }) => {
+export async function sendMessage(contacts: Contact[], client: Client): Promise<void> {
     console.log(`Received ${contacts.length} contacts to message.`);
     
     for (const contact of contacts) {
@@ -86,8 +69,7 @@ const sendMessageFlow = ai.defineFlow(
           const message = output.message;
           
           console.log(`Sending message to ${chatId}: "${message}"`);
-          const whatsappClient = client as Client;
-          await whatsappClient.sendMessage(chatId, message);
+          await client.sendMessage(chatId, message);
           
           // Update contact status to 'Contatado' in Firestore
           const contactRef = doc(db, 'contacts', contact.id);
@@ -107,5 +89,4 @@ const sendMessageFlow = ai.defineFlow(
         console.log(`Skipping contact ${contact.name} (ID: ${contact.id}) due to missing phone number.`);
       }
     }
-  }
-);
+}
