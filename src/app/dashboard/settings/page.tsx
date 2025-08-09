@@ -41,19 +41,20 @@ export default function SettingsPage() {
   const auth = getAuth(app)
 
   const checkStatus = useCallback(async (userId: string) => {
+    // Don't check status if we are in the middle of a connection attempt
+    if (status === 'loading' || status === 'pending_qr') return;
     try {
       const result = await checkClientStatus({ userId });
-      setStatus(result.status as ConnectionStatus);
-      if (result.status === 'pending_qr' && !qrCode) {
-        // If server thinks we are pending but we have no QR, try to reconnect
-        handleGenerateQrCode();
+      // Don't override pending_qr status from the server if we already have a QR code
+      if (status === 'pending_qr' && result.status === 'disconnected') {
+        return;
       }
+      setStatus(result.status as ConnectionStatus);
     } catch (error) {
       console.error("Failed to check status:", error);
-      // If status check fails, assume disconnected to be safe
-      setStatus('disconnected');
+      setStatus('error');
     }
-  }, []);
+  }, [status]);
 
 
   useEffect(() => {
@@ -81,14 +82,11 @@ export default function SettingsPage() {
 
     // Then check periodically
     const intervalId = setInterval(() => {
-      // Only poll if the component is not in the middle of a connection attempt
-      if (status !== 'loading' && status !== 'pending_qr') {
         checkStatus(user.uid);
-      }
     }, 5000); // Poll every 5 seconds
 
     return () => clearInterval(intervalId);
-  }, [user, status, checkStatus]);
+  }, [user, checkStatus]);
 
 
   const handleGenerateQrCode = async () => {
@@ -105,9 +103,13 @@ export default function SettingsPage() {
             setQrCode(result.qr);
             setStatus("pending_qr");
         } else if (result.status === 'connected') {
-            handleConnectionSuccess(result.message);
+            setStatus("connected");
+            setQrCode(null);
+            toast({
+                title: "Conexão estabelecida!",
+                description: result.message || "Seu WhatsApp foi conectado com sucesso.",
+            });
         } else {
-             // The status might be loading or already connected from another tab
             setStatus(result.status as ConnectionStatus);
         }
     } catch (error: any) {
@@ -120,15 +122,6 @@ export default function SettingsPage() {
             variant: "destructive",
         });
     }
-  }
-
-  const handleConnectionSuccess = (message?: string) => {
-    setStatus("connected");
-    setQrCode(null);
-    toast({
-        title: "Conexão estabelecida!",
-        description: message || "Seu WhatsApp foi conectado com sucesso.",
-    });
   }
   
   const handleDisconnect = async () => {

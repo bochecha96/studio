@@ -12,7 +12,7 @@ import qrcode from 'qrcode';
 import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
-import { setClient, deleteClient, getClientStatus } from '@/lib/whatsapp-client-manager';
+import { setClient, deleteClient, getClient, getClientStatus } from '@/lib/whatsapp-client-manager';
 import { generateAnswer } from './generateAnswer-flow';
 
 
@@ -137,7 +137,7 @@ const generateQrCodeFlow = ai.defineFlow(
     return new Promise((resolve, reject) => {
         const cleanup = () => {
             client.removeAllListeners();
-            client.destroy().catch(err => console.error(`Error destroying client for ${userId} during cleanup:`, err));
+            // Don't destroy the client here, as it might be needed for reconnection or is already destroyed.
         };
 
         client.on('qr', async (qr) => {
@@ -179,7 +179,6 @@ const generateQrCodeFlow = ai.defineFlow(
         client.on('disconnected', (reason) => {
           console.log(`Client for ${userId} was logged out:`, reason);
           deleteClient(userId);
-          // Don't reject here as it could be an expected logout.
           // The state will be handled by getClientStatus on the frontend.
         });
 
