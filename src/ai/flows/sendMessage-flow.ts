@@ -77,9 +77,12 @@ export async function sendMessage(contacts: Contact[], client: Client): Promise<
             status: 'Contatado'
           });
 
-          // Increment the messagesSent counter for the user
+          // Increment counters for the user
           const userStatsRef = doc(db, 'user_stats', contact.userId);
-          await setDoc(userStatsRef, { messagesSent: increment(1) }, { merge: true });
+          await setDoc(userStatsRef, { 
+            messagesSent: increment(1),
+            totalContacts: increment(1) 
+          }, { merge: true });
           
           console.log(`Successfully sent message and updated status for contact ${contact.id}`);
         } catch (error) {

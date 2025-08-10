@@ -17,7 +17,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import {
-  Box,
+  Users,
   TrendingUp,
   DollarSign,
   MessageSquareText,
@@ -27,6 +27,7 @@ import { app, db } from "@/lib/firebase"
 
 interface UserStats {
   messagesSent: number;
+  totalContacts: number;
   // Add other stats here in the future
 }
 
@@ -56,12 +57,12 @@ export default function DashboardPage() {
       if (docSnap.exists()) {
         setStats(docSnap.data() as UserStats)
       } else {
-        setStats({ messagesSent: 0 }) // Default stats if none exist
+        setStats({ messagesSent: 0, totalContacts: 0 }) // Default stats if none exist
       }
       setLoading(false)
     }, (error) => {
       console.error("Error fetching user stats:", error)
-      setStats({ messagesSent: 0 })
+      setStats({ messagesSent: 0, totalContacts: 0 })
       setLoading(false)
     })
 
@@ -83,12 +84,16 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-base font-medium">
-              Total de Vendas
+              Total de Contatos
             </CardTitle>
-            <Box className="h-5 w-5 text-muted-foreground" />
+            <Users className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">0</div>
+            {loading ? (
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            ) : (
+              <div className="text-3xl font-bold">{stats?.totalContacts ?? 0}</div>
+            )}
           </CardContent>
         </Card>
         <Card>
