@@ -44,10 +44,6 @@ import {
 } from "lucide-react"
 import { app, db } from "@/lib/firebase"
 
-interface UserStats {
-  messagesSent: number;
-  totalContacts: number;
-}
 
 interface Contact {
   id: string;
@@ -60,7 +56,6 @@ type TimeFilter = "7d" | "currentMonth" | "lastMonth"
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null)
-  const [stats, setStats] = useState<UserStats | null>(null)
   const [loading, setLoading] = useState(true)
   const auth = getAuth(app)
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("currentMonth")
@@ -72,7 +67,8 @@ export default function DashboardPage() {
       setUser(currentUser)
       if (!currentUser) {
         setLoading(false)
-        setStats(null)
+      } else {
+        setLoading(false)
       }
     })
     return () => unsubscribeAuth()
@@ -81,6 +77,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) {
       setFilteredContacts([]);
+      setLoadingFilter(false)
       return;
     };
 
@@ -133,31 +130,12 @@ export default function DashboardPage() {
     return () => unsubscribe();
   }, [user, timeFilter]);
 
-
-  useEffect(() => {
-    if (!user) return
-
-    setLoading(true)
-    const statsRef = doc(db, "user_stats", user.uid)
-    const unsubscribeStats = onSnapshot(statsRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setStats(docSnap.data() as UserStats)
-      } else {
-        setStats({ messagesSent: 0, totalContacts: 0 })
-      }
-      setLoading(false)
-    }, (error) => {
-      console.error("Error fetching user stats:", error)
-      setStats({ messagesSent: 0, totalContacts: 0 })
-      setLoading(false)
-    })
-
-    return () => unsubscribeStats()
-  }, [user])
   
   const recoveredCount = filteredContacts.filter(c => c.status === 'Recuperado').length;
   const pendingCount = filteredContacts.filter(c => ['Pendente', 'Contatado', 'Respondido'].includes(c.status)).length;
   const lostCount = filteredContacts.filter(c => c.status === 'Perdido').length;
+  const totalContactsInPeriod = filteredContacts.length;
+  const messagesSentInPeriod = filteredContacts.filter(c => c.status !== 'Pendente').length;
 
 
   const renderContactsTable = (contacts: Contact[], emptyMessage: string) => {
@@ -212,11 +190,12 @@ export default function DashboardPage() {
             <Users className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {loadingFilter ? (
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             ) : (
-              <div className="text-3xl font-bold">{stats?.totalContacts ?? 0}</div>
+              <div className="text-3xl font-bold">{totalContactsInPeriod}</div>
             )}
+            <p className="text-xs text-muted-foreground">no período selecionado</p>
           </CardContent>
         </Card>
         <Card>
@@ -228,6 +207,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
              {loadingFilter ? <Loader2 className="h-8 w-8 animate-spin text-primary" /> : <div className="text-3xl font-bold">{recoveredCount}</div>}
+             <p className="text-xs text-muted-foreground">no período selecionado</p>
           </CardContent>
         </Card>
         <Card>
@@ -248,11 +228,12 @@ export default function DashboardPage() {
             <MessageSquareText className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-             {loading ? (
+             {loadingFilter ? (
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               ) : (
-                <div className="text-3xl font-bold">{stats?.messagesSent ?? 0}</div>
+                <div className="text-3xl font-bold">{messagesSentInPeriod}</div>
               )}
+             <p className="text-xs text-muted-foreground">no período selecionado</p>
           </CardContent>
         </Card>
       </div>
@@ -297,5 +278,3 @@ export default function DashboardPage() {
     </div>
   )
 }
-
-    
