@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
-import { doc, onSnapshot, collection, query, where, Timestamp, getDocs } from "firebase/firestore"
+import { collection, query, where, Timestamp, getDocs } from "firebase/firestore"
 import {
   startOfToday,
   subDays,
@@ -294,5 +294,3 @@ export default function DashboardPage() {
     </div>
   )
 }
-
-    
