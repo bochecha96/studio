@@ -9,7 +9,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { type Message, type Client } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, setDoc, increment } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
 import { setClient, deleteClient, getClient, getClientStatus } from '@/lib/whatsapp-client-manager';
@@ -76,6 +76,11 @@ async function handleIncomingMessage(message: Message, userId: string, client: C
         if (aiResponse.answer) {
              console.log(`Sending AI response to ${chatId}: "${aiResponse.answer}"`);
              await client.sendMessage(chatId, aiResponse.answer);
+
+             // Increment message counter
+             const userStatsRef = doc(db, 'user_stats', userId);
+             await setDoc(userStatsRef, { messagesSent: increment(1) }, { merge: true });
+
         } else {
             console.error(`AI failed to generate an answer for contact ${contactDoc.id}.`);
         }
@@ -108,7 +113,8 @@ const generateQrCodeFlow = ai.defineFlow(
     
     console.log(`Initializing client with local auth for user ${userId}.`);
 
-    if (getClientStatus(userId) === 'connected') {
+    const currentStatus = getClientStatus(userId);
+    if (currentStatus === 'connected') {
         console.log(`User ${userId} is already connected.`);
         return { status: 'connected', message: 'Já conectado.' };
     }
@@ -184,7 +190,9 @@ const generateQrCodeFlow = ai.defineFlow(
 
     const timeoutPromise = new Promise<GenerateQrCodeOutput>((_, reject) => {
       setTimeout(() => {
-        reject(new Error('A conexão expirou. Por favor, tente novamente.'));
+        if (getClientStatus(userId) !== 'connected') {
+             reject(new Error('A conexão expirou. Por favor, tente novamente.'));
+        }
       }, 45000); // 45-second timeout
     });
 

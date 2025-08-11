@@ -52,6 +52,10 @@ interface Contact {
   status: 'Pendente' | 'Recuperado' | 'Perdido' | 'Contatado' | 'Respondido';
 }
 
+interface UserStats {
+    messagesSent: number;
+}
+
 type TimeFilter = "7d" | "currentMonth" | "lastMonth"
 
 export default function DashboardPage() {
@@ -60,19 +64,44 @@ export default function DashboardPage() {
   const auth = getAuth(app)
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("currentMonth")
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([])
+  const [userStats, setUserStats] = useState<UserStats>({ messagesSent: 0 });
   const [loadingFilter, setLoadingFilter] = useState(true)
+  const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
       if (!currentUser) {
         setLoading(false)
+        setLoadingStats(false)
       } else {
         setLoading(false)
       }
     })
     return () => unsubscribeAuth()
   }, [auth])
+
+  useEffect(() => {
+    if (!user) {
+      setUserStats({ messagesSent: 0 });
+      setLoadingStats(false);
+      return;
+    }
+
+    setLoadingStats(true);
+    const statsRef = doc(db, "user_stats", user.uid);
+    const unsubscribeStats = onSnapshot(statsRef, (doc) => {
+        if (doc.exists()) {
+            setUserStats(doc.data() as UserStats);
+        } else {
+            setUserStats({ messagesSent: 0 });
+        }
+        setLoadingStats(false);
+    });
+
+    return () => unsubscribeStats();
+  }, [user]);
+
 
   useEffect(() => {
     if (!user) {
@@ -135,7 +164,6 @@ export default function DashboardPage() {
   const pendingCount = filteredContacts.filter(c => ['Pendente', 'Contatado', 'Respondido'].includes(c.status)).length;
   const lostCount = filteredContacts.filter(c => c.status === 'Perdido').length;
   const totalContactsInPeriod = filteredContacts.length;
-  const messagesSentInPeriod = filteredContacts.filter(c => ['Contatado', 'Respondido', 'Recuperado', 'Perdido'].includes(c.status)).length;
 
 
   const renderContactsTable = (contacts: Contact[], emptyMessage: string) => {
@@ -228,12 +256,12 @@ export default function DashboardPage() {
             <MessageSquareText className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-             {loadingFilter ? (
+             {loadingStats ? (
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               ) : (
-                <div className="text-3xl font-bold">{messagesSentInPeriod}</div>
+                <div className="text-3xl font-bold">{userStats.messagesSent || 0}</div>
               )}
-             <p className="text-xs text-muted-foreground">no período selecionado</p>
+             <p className="text-xs text-muted-foreground">total de mensagens enviadas</p>
           </CardContent>
         </Card>
       </div>
