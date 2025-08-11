@@ -135,7 +135,7 @@ export default function DashboardPage() {
   const pendingCount = filteredContacts.filter(c => ['Pendente', 'Contatado', 'Respondido'].includes(c.status)).length;
   const lostCount = filteredContacts.filter(c => c.status === 'Perdido').length;
   const totalContactsInPeriod = filteredContacts.length;
-  const messagesSentInPeriod = filteredContacts.filter(c => c.status !== 'Pendente').length;
+  const messagesSentInPeriod = filteredContacts.filter(c => ['Contatado', 'Respondido', 'Recuperado', 'Perdido'].includes(c.status)).length;
 
 
   const renderContactsTable = (contacts: Contact[], emptyMessage: string) => {
