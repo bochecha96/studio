@@ -48,7 +48,7 @@ import { app, db } from "@/lib/firebase"
 interface Contact {
   id: string;
   name: string;
-  email: string;
+  product: string;
   status: 'Pendente' | 'Recuperado' | 'Perdido' | 'Contatado' | 'Respondido';
 }
 
@@ -117,7 +117,7 @@ export default function DashboardPage() {
       const contactsData = snapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().name,
-        email: doc.data().email,
+        product: doc.data().product,
         status: doc.data().status
       }));
       setFilteredContacts(contactsData);
@@ -154,14 +154,14 @@ export default function DashboardPage() {
         <TableHeader>
           <TableRow>
             <TableHead>Cliente</TableHead>
-            <TableHead>Email</TableHead>
+            <TableHead>Produto</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {contacts.map((contact) => (
             <TableRow key={contact.id}>
               <TableCell>{contact.name}</TableCell>
-              <TableCell>{contact.email}</TableCell>
+              <TableCell>{contact.product}</TableCell>
             </TableRow>
           ))}
         </TableBody>
