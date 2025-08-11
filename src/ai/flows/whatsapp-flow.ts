@@ -205,7 +205,7 @@ export async function clearActiveClient(input: ClearClientInput): Promise<void> 
 const clearActiveClientFlow = ai.defineFlow(
     {
         name: 'clearActiveClientFlow',
-        inputSchema: clearClientInputsinSchema,
+        inputSchema: clearClientInputSchema,
     },
     async ({ userId }) => {
         console.log(`Received request to clear active client for user ${userId}.`);
