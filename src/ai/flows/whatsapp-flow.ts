@@ -108,7 +108,6 @@ const generateQrCodeFlow = ai.defineFlow(
     
     console.log(`Initializing client with local auth for user ${userId}.`);
 
-    // Avoid creating a new client if one is already connected and ready
     if (getClientStatus(userId) === 'connected') {
         console.log(`User ${userId} is already connected.`);
         return { status: 'connected', message: 'Já conectado.' };
@@ -128,27 +127,21 @@ const generateQrCodeFlow = ai.defineFlow(
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process', // This may help on some resource-constrained environments
+            '--single-process', 
             '--disable-gpu'
           ],
         },
       });
 
     return new Promise((resolve, reject) => {
-        const cleanup = () => {
-            client.removeAllListeners();
-            // Don't destroy the client here, as it might be needed for reconnection or is already destroyed.
-        };
-
+        
         client.on('qr', async (qr) => {
             console.log(`QR RECEIVED for ${userId}.`);
             try {
                 const qrCodeDataUri = await qrcode.toDataURL(qr);
                 resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
-                 // Don't cleanup here, wait for ready or auth_failure
             } catch (err) {
                 console.error("Failed to generate QR code data URI:", err);
-                cleanup();
                 reject(new Error("Failed to generate QR code data URI."));
             }
         });
@@ -156,35 +149,29 @@ const generateQrCodeFlow = ai.defineFlow(
         client.on('ready', () => {
             console.log(`Client for ${userId} is ready! Setting up for message receiving.`);
             setClient(userId, client);
-            // Pass client instance to the handler
+            
             client.on('message', (message) => handleIncomingMessage(message, userId, client));
             
-            // Trigger an initial send on successful connection
             sendNewContacts({ userId }).catch(error => {
                 console.error(`Error during initial sendNewContacts for user ${userId}:`, error);
             });
             
-            client.removeAllListeners('qr'); // No longer need to listen for QR codes
-            client.removeAllListeners('auth_failure');
             resolve({ status: 'connected', message: 'WhatsApp conectado com sucesso.' });
         });
         
         client.on('auth_failure', (msg) => {
           console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
           deleteClient(userId);
-          cleanup();
           reject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'));
         });
 
         client.on('disconnected', (reason) => {
           console.log(`Client for ${userId} was logged out:`, reason);
           deleteClient(userId);
-          // The state will be handled by getClientStatus on the frontend.
         });
 
         client.initialize().catch(err => {
             console.error(`Client initialization error for ${userId}:`, err);
-            cleanup();
             reject(new Error("Failed to initialize WhatsApp client."));
         });
     });
