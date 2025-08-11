@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 import { app, db } from "@/lib/firebase"
 import { ArrowLeft, Loader2 } from "lucide-react"
+import { sendNewContacts } from "@/ai/flows/sendNewContacts-flow"
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "O nome deve ter pelo menos 2 caracteres." }),
@@ -85,8 +86,19 @@ export default function NewContactPage() {
       })
       toast({
         title: "Sucesso!",
-        description: "Novo contato adicionado.",
+        description: "Novo contato adicionado. A mensagem será enviada em breve.",
       })
+      
+      // Trigger the flow to send messages to the new contact
+      sendNewContacts({ userId: user.uid }).catch(error => {
+          console.error("Falha ao iniciar o fluxo sendNewContacts:", error);
+          toast({
+              title: "Erro de Envio",
+              description: "O contato foi salvo, mas ocorreu um erro ao tentar enviar a mensagem.",
+              variant: "destructive"
+          });
+      });
+
       router.push("/dashboard/contacts")
     } catch (error) {
       console.error("Error adding document: ", error)

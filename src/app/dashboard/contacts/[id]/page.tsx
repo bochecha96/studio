@@ -36,6 +36,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { app, db } from "@/lib/firebase"
 import { ArrowLeft, Loader2 } from "lucide-react"
+import { sendNewContacts } from "@/ai/flows/sendNewContacts-flow"
 
 const formSchema = z.object({
   name: z.string().min(2, { message: "O nome deve ter pelo menos 2 caracteres." }),
@@ -53,6 +54,7 @@ export default function EditContactPage() {
   const auth = getAuth(app)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [originalStatus, setOriginalStatus] = useState<string | null>(null)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -74,6 +76,7 @@ export default function EditContactPage() {
         const contactData = contactSnap.data()
         if (contactData.userId === currentUser.uid) {
           form.reset(contactData)
+          setOriginalStatus(contactData.status)
         } else {
           toast({ title: "Erro", description: "Você não tem permissão para editar este contato.", variant: "destructive"})
           router.push("/dashboard/contacts")
@@ -112,6 +115,8 @@ export default function EditContactPage() {
       return
     }
 
+    const statusChangedToPendente = values.status === 'Pendente' && originalStatus !== 'Pendente'
+
     try {
       const contactRef = doc(db, "contacts", id)
       await updateDoc(contactRef, {
@@ -122,6 +127,22 @@ export default function EditContactPage() {
         title: "Sucesso!",
         description: "Contato atualizado.",
       })
+      
+      if (statusChangedToPendente) {
+        toast({
+            title: "Iniciando Contato",
+            description: "O contato foi marcado como 'Pendente' e uma mensagem será enviada em breve.",
+        })
+        sendNewContacts({ userId: user.uid }).catch(error => {
+            console.error("Falha ao iniciar o fluxo sendNewContacts após edição:", error);
+            toast({
+                title: "Erro de Envio",
+                description: "Não foi possível iniciar o envio de mensagens para o contato atualizado.",
+                variant: "destructive"
+            });
+        });
+      }
+
       router.push("/dashboard/contacts")
     } catch (error) {
       console.error("Error updating document: ", error)
@@ -213,7 +234,7 @@ export default function EditContactPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Status</FormLabel>
-                     <Select onValueChange={field.onChange} defaultValue={field.value}>
+                     <Select onValuechange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecione o status do contato" />
