@@ -1,6 +1,7 @@
+
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { Button } from "@/components/ui/button"
@@ -39,20 +40,24 @@ export default function SettingsPage() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const { toast } = useToast()
   const auth = getAuth(app)
+  const isCheckingStatus = useRef(false);
 
   const checkStatus = useCallback(async (userId: string) => {
-    // Don't check status if we are in the middle of a connection attempt
-    if (status === 'loading' || status === 'pending_qr') return;
+    if (isCheckingStatus.current || status === 'pending_qr') return;
+    
+    isCheckingStatus.current = true;
     try {
       const result = await checkClientStatus({ userId });
-      // Don't override pending_qr status from the server if we already have a QR code
-      if (status === 'pending_qr' && result.status === 'disconnected') {
-        return;
+       if (status === 'pending_qr' && result.status === 'disconnected') {
+         isCheckingStatus.current = false;
+         return;
       }
       setStatus(result.status as ConnectionStatus);
     } catch (error) {
       console.error("Failed to check status:", error);
       setStatus('error');
+    } finally {
+        isCheckingStatus.current = false;
     }
   }, [status]);
 
@@ -77,13 +82,11 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!user) return;
 
-    // Check status immediately on user load
     checkStatus(user.uid);
 
-    // Then check periodically
     const intervalId = setInterval(() => {
         checkStatus(user.uid);
-    }, 5000); // Poll every 5 seconds
+    }, 5000); 
 
     return () => clearInterval(intervalId);
   }, [user, checkStatus]);
@@ -110,7 +113,12 @@ export default function SettingsPage() {
                 description: result.message || "Seu WhatsApp foi conectado com sucesso.",
             });
         } else {
-            setStatus(result.status as ConnectionStatus);
+             // Handle potential case where connection is already established on another tab
+            if (result.status) {
+                setStatus(result.status as ConnectionStatus);
+            } else {
+                 setStatus("error");
+            }
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
@@ -256,7 +264,7 @@ export default function SettingsPage() {
             ) : status === "loading" ? (
                  <div className="flex flex-col items-center gap-4">
                     <Loader className="h-16 w-16 text-primary animate-spin" />
-                    <p className="text-muted-foreground">Estabelecendo conexão...</p>
+                    <p className="text-muted-foreground">Verificando status...</p>
                  </div>
             ) : (status === "disconnected" || status === "error") ? (
                 <>
@@ -321,11 +329,4 @@ export default function SettingsPage() {
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON com os campos: `customer_name`, `customer_email`, `product_name` e, opcionalmente, `customer_phone`.
-              </AlertDescription>
-            </Alert>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
+              </Aler
