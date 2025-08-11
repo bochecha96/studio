@@ -139,6 +139,8 @@ const generateQrCodeFlow = ai.defineFlow(
             console.log(`QR RECEIVED for ${userId}.`);
             try {
                 const qrCodeDataUri = await qrcode.toDataURL(qr);
+                // Resolve with the QR code to send it to the frontend,
+                // but the flow continues listening for the 'ready' event.
                 resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
             } catch (err) {
                 console.error("Failed to generate QR code data URI:", err);
@@ -156,7 +158,9 @@ const generateQrCodeFlow = ai.defineFlow(
                 console.error(`Error during initial sendNewContacts for user ${userId}:`, error);
             });
             
-            resolve({ status: 'connected', message: 'WhatsApp conectado com sucesso.' });
+            // This is a final state, but the promise might have been resolved with the QR code already.
+            // The frontend will use checkClientStatus to confirm this 'connected' state.
+            console.log(`Connection for ${userId} is ready. The flow will now complete.`);
         });
         
         client.on('auth_failure', (msg) => {
