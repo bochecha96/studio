@@ -133,7 +133,7 @@ const generateQrCodeFlow = ai.defineFlow(
         },
       });
 
-    return new Promise((resolve, reject) => {
+    const promise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
         
         client.on('qr', async (qr) => {
             console.log(`QR RECEIVED for ${userId}.`);
@@ -175,6 +175,8 @@ const generateQrCodeFlow = ai.defineFlow(
             reject(new Error("Failed to initialize WhatsApp client."));
         });
     });
+
+    return promise;
   }
 );
 
