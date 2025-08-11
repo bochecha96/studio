@@ -40,40 +40,6 @@ export default function SettingsPage() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const { toast } = useToast()
   const auth = getAuth(app)
-  const statusCheckInterval = useRef<NodeJS.Timeout | null>(null);
-
-  const stopStatusCheck = () => {
-    if (statusCheckInterval.current) {
-      clearInterval(statusCheckInterval.current);
-      statusCheckInterval.current = null;
-    }
-  };
-
-  const startStatusCheck = useCallback((userId: string) => {
-    stopStatusCheck(); // Ensure no multiple intervals are running
-    const check = async () => {
-      try {
-        const result = await checkClientStatus({ userId });
-        // Don't update status if a QR is being shown
-        if (statusRef.current === 'pending_qr' && result.status === 'disconnected') {
-            return;
-        }
-        setStatus(result.status as ConnectionStatus);
-      } catch (error) {
-        console.error("Failed to check status:", error);
-        setStatus('error');
-      }
-    };
-    check(); // Initial check
-    statusCheckInterval.current = setInterval(check, 5000);
-  }, []);
-
-  // Use a ref to get the latest status inside setInterval without depending on it
-  const statusRef = useRef(status);
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -83,20 +49,22 @@ export default function SettingsPage() {
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
         }
-        startStatusCheck(currentUser.uid);
+        // Initial status check when user is loaded
+        checkClientStatus({ userId: currentUser.uid })
+            .then(result => setStatus(result.status as ConnectionStatus))
+            .catch(() => setStatus('error'));
+
       } else {
         setUser(null)
         setStatus("disconnected");
-        stopStatusCheck();
       }
       setLoadingUser(false)
     })
     
     return () => {
         unsubscribe();
-        stopStatusCheck();
     }
-  }, [auth, startStatusCheck])
+  }, [auth])
 
 
   const handleGenerateQrCode = async () => {
@@ -105,7 +73,6 @@ export default function SettingsPage() {
         return;
     }
     
-    stopStatusCheck(); // Stop polling while we attempt a new connection
     setStatus("loading")
     setQrCode(null)
 
@@ -114,8 +81,29 @@ export default function SettingsPage() {
         if (result.qr) {
             setQrCode(result.qr);
             setStatus("pending_qr");
-            // After getting a QR code, we start checking again to see if it becomes connected
-            startStatusCheck(user.uid); 
+            // After getting a QR code, poll to see if it becomes connected
+            const interval = setInterval(async () => {
+                const statusResult = await checkClientStatus({ userId: user.uid });
+                if (statusResult.status === 'connected') {
+                    clearInterval(interval);
+                    setStatus('connected');
+                    setQrCode(null);
+                    toast({
+                        title: "Conexão estabelecida!",
+                        description: "Seu WhatsApp foi conectado com sucesso.",
+                    });
+                }
+            }, 3000); // Poll every 3 seconds
+
+            // Set a timeout to stop polling after a while
+             setTimeout(() => {
+                clearInterval(interval);
+                if (status !== 'connected') {
+                   // If not connected by now, assume it failed or user abandoned.
+                   setStatus('disconnected'); 
+                }
+            }, 60000); // 60-second timeout for the whole process
+
         } else if (result.status === 'connected') {
             setStatus("connected");
             setQrCode(null);
@@ -123,10 +111,8 @@ export default function SettingsPage() {
                 title: "Conexão estabelecida!",
                 description: result.message || "Seu WhatsApp foi conectado com sucesso.",
             });
-            startStatusCheck(user.uid);
         } else {
             setStatus(result.status as ConnectionStatus || "error");
-            startStatusCheck(user.uid);
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
@@ -137,15 +123,11 @@ export default function SettingsPage() {
             description: error.message || "Não foi possível conectar. Tente novamente.",
             variant: "destructive",
         });
-        if (user) {
-          startStatusCheck(user.uid);
-        }
     }
   }
   
   const handleDisconnect = async () => {
     if (!user) return;
-    stopStatusCheck();
     try {
         await clearActiveClient({ userId: user.uid });
         setStatus("disconnected")
@@ -160,9 +142,6 @@ export default function SettingsPage() {
             description: "Não foi possível encerrar a sessão. Tente novamente.",
             variant: "destructive"
         });
-        if (user) {
-          startStatusCheck(user.uid);
-        }
     }
   }
   
@@ -352,5 +331,3 @@ export default function SettingsPage() {
     </div>
   )
 }
-
-    
