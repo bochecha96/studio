@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
-import { doc, onSnapshot, collection, query, where, Timestamp } from "firebase/firestore"
+import { doc, onSnapshot, collection, query, where, Timestamp, getDocs } from "firebase/firestore"
 import {
   startOfToday,
   subDays,
@@ -52,10 +52,6 @@ interface Contact {
   status: 'Pendente' | 'Recuperado' | 'Perdido' | 'Contatado' | 'Respondido';
 }
 
-interface UserStats {
-    messagesSent: number;
-}
-
 type TimeFilter = "7d" | "currentMonth" | "lastMonth"
 
 export default function DashboardPage() {
@@ -64,48 +60,22 @@ export default function DashboardPage() {
   const auth = getAuth(app)
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("currentMonth")
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([])
-  const [userStats, setUserStats] = useState<UserStats>({ messagesSent: 0 });
+  const [messagesSentCount, setMessagesSentCount] = useState(0)
   const [loadingFilter, setLoadingFilter] = useState(true)
-  const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
-      if (!currentUser) {
-        setLoading(false)
-        setLoadingStats(false)
-      } else {
-        setLoading(false)
-      }
+      setLoading(false)
     })
     return () => unsubscribeAuth()
   }, [auth])
-
-  useEffect(() => {
-    if (!user) {
-      setUserStats({ messagesSent: 0 });
-      setLoadingStats(false);
-      return;
-    }
-
-    setLoadingStats(true);
-    const statsRef = doc(db, "user_stats", user.uid);
-    const unsubscribeStats = onSnapshot(statsRef, (doc) => {
-        if (doc.exists()) {
-            setUserStats(doc.data() as UserStats);
-        } else {
-            setUserStats({ messagesSent: 0 });
-        }
-        setLoadingStats(false);
-    });
-
-    return () => unsubscribeStats();
-  }, [user]);
 
 
   useEffect(() => {
     if (!user) {
       setFilteredContacts([]);
+      setMessagesSentCount(0);
       setLoadingFilter(false)
       return;
     };
@@ -135,14 +105,21 @@ export default function DashboardPage() {
     const startTimestamp = Timestamp.fromDate(startDate);
     const endTimestamp = Timestamp.fromDate(endDate);
 
-    const q = query(
+    const contactsQuery = query(
       collection(db, "contacts"),
       where("userId", "==", user.uid),
       where("lastContact", ">=", startTimestamp),
       where("lastContact", "<=", endTimestamp)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const messagesQuery = query(
+      collection(db, "message_logs"),
+      where("userId", "==", user.uid),
+      where("timestamp", ">=", startTimestamp),
+      where("timestamp", "<=", endTimestamp)
+    );
+
+    const unsubscribeContacts = onSnapshot(contactsQuery, (snapshot) => {
       const contactsData = snapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().name,
@@ -150,13 +127,25 @@ export default function DashboardPage() {
         status: doc.data().status
       }));
       setFilteredContacts(contactsData);
-      setLoadingFilter(false);
     }, (error) => {
       console.error("Error fetching filtered contacts:", error);
-      setLoadingFilter(false);
     });
 
-    return () => unsubscribe();
+    const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
+        setMessagesSentCount(snapshot.size);
+    }, (error) => {
+        console.error("Error fetching message logs:", error);
+    });
+    
+    // Set loading to false once both have been set up
+    // Note: This is a simplification. For production, you might want more robust loading state management.
+    setLoadingFilter(false);
+
+
+    return () => {
+        unsubscribeContacts();
+        unsubscribeMessages();
+    };
   }, [user, timeFilter]);
 
   
@@ -256,12 +245,12 @@ export default function DashboardPage() {
             <MessageSquareText className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-             {loadingStats ? (
+             {loadingFilter ? (
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               ) : (
-                <div className="text-3xl font-bold">{userStats.messagesSent || 0}</div>
+                <div className="text-3xl font-bold">{messagesSentCount}</div>
               )}
-             <p className="text-xs text-muted-foreground">total de mensagens enviadas</p>
+             <p className="text-xs text-muted-foreground">no período selecionado</p>
           </CardContent>
         </Card>
       </div>

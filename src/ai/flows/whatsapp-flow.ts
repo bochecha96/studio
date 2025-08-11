@@ -9,7 +9,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { type Message, type Client } from 'whatsapp-web.js';
 import qrcode from 'qrcode';
-import { collection, query, where, getDocs, updateDoc, doc, setDoc, increment } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, setDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
 import { setClient, deleteClient, getClient, getClientStatus } from '@/lib/whatsapp-client-manager';
@@ -77,7 +77,14 @@ async function handleIncomingMessage(message: Message, userId: string, client: C
              console.log(`Sending AI response to ${chatId}: "${aiResponse.answer}"`);
              await client.sendMessage(chatId, aiResponse.answer);
 
-             // Increment message counter
+             // Log the sent message for stats
+             await addDoc(collection(db, 'message_logs'), {
+                userId: userId,
+                contactId: contactDoc.id,
+                timestamp: serverTimestamp(),
+            });
+
+             // Increment total message counter (optional)
              const userStatsRef = doc(db, 'user_stats', userId);
              await setDoc(userStatsRef, { messagesSent: increment(1) }, { merge: true });
 
@@ -190,7 +197,10 @@ const generateQrCodeFlow = ai.defineFlow(
 
     const timeoutPromise = new Promise<GenerateQrCodeOutput>((_, reject) => {
       setTimeout(() => {
-        if (getClientStatus(userId) !== 'connected') {
+        const currentStatus = getClientStatus(userId);
+        if (currentStatus !== 'connected') {
+             client.destroy().catch(e => console.error("Error destroying client on timeout", e));
+             deleteClient(userId);
              reject(new Error('A conexão expirou. Por favor, tente novamente.'));
         }
       }, 45000); // 45-second timeout

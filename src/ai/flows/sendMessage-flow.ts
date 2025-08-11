@@ -6,7 +6,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { type Client } from 'whatsapp-web.js';
-import { doc, updateDoc, increment, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, increment, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 const ContactSchema = z.object({
@@ -76,8 +76,15 @@ export async function sendMessage(contacts: Contact[], client: Client): Promise<
           await updateDoc(contactRef, {
             status: 'Contatado'
           });
+            
+          // Log the sent message for stats
+          await addDoc(collection(db, 'message_logs'), {
+            userId: contact.userId,
+            contactId: contact.id,
+            timestamp: serverTimestamp(),
+          });
 
-          // Increment counters for the user
+          // Increment total message counter (optional, can be removed if only time-based stats are needed)
           const userStatsRef = doc(db, 'user_stats', contact.userId);
           await setDoc(userStatsRef, { 
             messagesSent: increment(1),
