@@ -27,6 +27,15 @@ export function getClient(userId: string): Client | undefined {
 }
 
 /**
+ * Retrieves all active clients.
+ * @returns A map of all active clients with their user IDs.
+ */
+export function getAllClients(): Map<string, Client> {
+    return activeClients;
+}
+
+
+/**
  * Deletes the client instance for a given user ID and destroys the connection.
  * @param userId The user's unique ID.
  */

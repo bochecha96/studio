@@ -83,26 +83,31 @@ export default function SettingsPage() {
             setStatus("pending_qr");
             // After getting a QR code, poll to see if it becomes connected
             const interval = setInterval(async () => {
-                const statusResult = await checkClientStatus({ userId: user.uid });
-                if (statusResult.status === 'connected') {
-                    clearInterval(interval);
-                    setStatus('connected');
-                    setQrCode(null);
-                    toast({
-                        title: "Conexão estabelecida!",
-                        description: "Seu WhatsApp foi conectado com sucesso.",
-                    });
+                try {
+                    const statusResult = await checkClientStatus({ userId: user.uid });
+                    if (statusResult.status === 'connected') {
+                        clearInterval(interval);
+                        setStatus('connected');
+                        setQrCode(null);
+                        toast({
+                            title: "Conexão estabelecida!",
+                            description: "Seu WhatsApp foi conectado com sucesso.",
+                        });
+                    }
+                } catch (pollError) {
+                     console.error("Error polling for status:", pollError);
+                     // Optional: handle polling error, maybe stop polling
                 }
-            }, 3000); // Poll every 3 seconds
+            }, 60000); // Poll every 1 minute
 
             // Set a timeout to stop polling after a while
              setTimeout(() => {
                 clearInterval(interval);
+                // Check one last time. If not connected, revert to disconnected.
                 if (status !== 'connected') {
-                   // If not connected by now, assume it failed or user abandoned.
-                   setStatus('disconnected'); 
+                   setStatus(prevStatus => prevStatus === 'pending_qr' ? 'disconnected' : prevStatus); 
                 }
-            }, 60000); // 60-second timeout for the whole process
+            }, 300000); // 5-minute timeout for the whole process
 
         } else if (result.status === 'connected') {
             setStatus("connected");
