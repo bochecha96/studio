@@ -43,7 +43,7 @@ export default function SettingsPage() {
   const isCheckingStatus = useRef(false);
 
   const checkStatus = useCallback(async (userId: string) => {
-    if (isCheckingStatus.current || status === 'pending_qr') return;
+    if (isCheckingStatus.current) return;
     
     isCheckingStatus.current = true;
     try {
@@ -329,4 +329,13 @@ export default function SettingsPage() {
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON com os campos: `customer_name`, `customer_email`, `product_name` e, opcionalmente, `customer_phone`.
-              </Aler
+              </AlertDescription>
+            </Alert>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+    
