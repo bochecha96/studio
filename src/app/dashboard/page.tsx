@@ -112,9 +112,10 @@ export default function DashboardPage() {
       where("lastContact", "<=", endTimestamp)
     );
     
-    // Updated query to avoid composite index
+    // This query requires a composite index on userId and timestamp
     const messagesQuery = query(
       collection(db, "message_logs"),
+      where("userId", "==", user.uid),
       where("timestamp", ">=", startTimestamp),
       where("timestamp", "<=", endTimestamp)
     );
@@ -134,9 +135,7 @@ export default function DashboardPage() {
     });
     
     const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
-        // Filter by user ID on the client side
-        const userMessages = snapshot.docs.filter(doc => doc.data().userId === user.uid);
-        setMessagesSentCount(userMessages.length);
+        setMessagesSentCount(snapshot.size);
         setLoadingFilter(false); // And here
     }, (error) => {
         console.error("Error fetching message logs:", error);
