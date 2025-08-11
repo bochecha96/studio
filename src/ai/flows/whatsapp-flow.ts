@@ -133,7 +133,7 @@ const generateQrCodeFlow = ai.defineFlow(
         },
       });
 
-    const promise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
+    const connectionPromise = new Promise<GenerateQrCodeOutput>((resolve, reject) => {
         
         client.on('qr', async (qr) => {
             console.log(`QR RECEIVED for ${userId}.`);
@@ -172,6 +172,8 @@ const generateQrCodeFlow = ai.defineFlow(
         client.on('disconnected', (reason) => {
           console.log(`Client for ${userId} was logged out:`, reason);
           deleteClient(userId);
+          // Don't reject here, as this can happen during normal operation.
+          // The frontend will handle this via status checks.
         });
 
         client.initialize().catch(err => {
@@ -180,7 +182,13 @@ const generateQrCodeFlow = ai.defineFlow(
         });
     });
 
-    return promise;
+    const timeoutPromise = new Promise<GenerateQrCodeOutput>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('A conexão expirou. Por favor, tente novamente.'));
+      }, 45000); // 45-second timeout
+    });
+
+    return Promise.race([connectionPromise, timeoutPromise]);
   }
 );
 
@@ -197,7 +205,7 @@ export async function clearActiveClient(input: ClearClientInput): Promise<void> 
 const clearActiveClientFlow = ai.defineFlow(
     {
         name: 'clearActiveClientFlow',
-        inputSchema: clearClientInputSchema,
+        inputSchema: clearClientInputsinSchema,
     },
     async ({ userId }) => {
         console.log(`Received request to clear active client for user ${userId}.`);

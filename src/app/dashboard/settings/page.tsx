@@ -40,26 +40,22 @@ export default function SettingsPage() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const { toast } = useToast()
   const auth = getAuth(app)
-  const isCheckingStatus = useRef(false);
+  const statusCheckInterval = useRef<NodeJS.Timeout | null>(null);
 
   const checkStatus = useCallback(async (userId: string) => {
-    if (isCheckingStatus.current) return;
-    
-    isCheckingStatus.current = true;
     try {
       const result = await checkClientStatus({ userId });
-       if (status === 'pending_qr' && result.status === 'disconnected') {
-         isCheckingStatus.current = false;
-         return;
+      // If the QR is being shown, and the status becomes disconnected (e.g. timeout on another tab)
+      // we don't want to clear the QR code on this screen. Let the user decide.
+      if (status === 'pending_qr' && result.status === 'disconnected') {
+        return;
       }
       setStatus(result.status as ConnectionStatus);
     } catch (error) {
       console.error("Failed to check status:", error);
       setStatus('error');
-    } finally {
-        isCheckingStatus.current = false;
     }
-  }, [status]);
+  }, [status]); // Add status to dependencies
 
 
   useEffect(() => {
@@ -79,17 +75,33 @@ export default function SettingsPage() {
     return () => unsubscribe()
   }, [auth])
 
+  // Effect to manage the status checking interval
   useEffect(() => {
-    if (!user) return;
-
+    if (!user || status === 'pending_qr') {
+      if (statusCheckInterval.current) {
+        clearInterval(statusCheckInterval.current);
+        statusCheckInterval.current = null;
+      }
+      return;
+    }
+    
+    // Initial check
     checkStatus(user.uid);
 
-    const intervalId = setInterval(() => {
+    // Start interval only if it's not already running
+    if (!statusCheckInterval.current) {
+      statusCheckInterval.current = setInterval(() => {
         checkStatus(user.uid);
-    }, 5000); 
+      }, 5000); 
+    }
 
-    return () => clearInterval(intervalId);
-  }, [user, checkStatus]);
+    return () => {
+      if (statusCheckInterval.current) {
+        clearInterval(statusCheckInterval.current);
+        statusCheckInterval.current = null;
+      }
+    };
+  }, [user, status, checkStatus]);
 
 
   const handleGenerateQrCode = async () => {
@@ -113,12 +125,7 @@ export default function SettingsPage() {
                 description: result.message || "Seu WhatsApp foi conectado com sucesso.",
             });
         } else {
-             // Handle potential case where connection is already established on another tab
-            if (result.status) {
-                setStatus(result.status as ConnectionStatus);
-            } else {
-                 setStatus("error");
-            }
+            setStatus(result.status as ConnectionStatus || "error");
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
@@ -210,7 +217,7 @@ export default function SettingsPage() {
       case "loading":
          return {
           badge: <Badge variant="secondary" className="flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" />Carregando</Badge>,
-          description: "Iniciando conexão com o WhatsApp...",
+          description: "Verificando status da conexão...",
         }
       case "error":
          return {
@@ -337,5 +344,3 @@ export default function SettingsPage() {
     </div>
   )
 }
-
-    
