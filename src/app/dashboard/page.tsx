@@ -111,10 +111,10 @@ export default function DashboardPage() {
       where("lastContact", ">=", startTimestamp),
       where("lastContact", "<=", endTimestamp)
     );
-
+    
+    // Updated query to avoid composite index
     const messagesQuery = query(
       collection(db, "message_logs"),
-      where("userId", "==", user.uid),
       where("timestamp", ">=", startTimestamp),
       where("timestamp", "<=", endTimestamp)
     );
@@ -127,19 +127,21 @@ export default function DashboardPage() {
         status: doc.data().status
       }));
       setFilteredContacts(contactsData);
+       setLoadingFilter(false); // Move loading state here
     }, (error) => {
       console.error("Error fetching filtered contacts:", error);
-    });
-
-    const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
-        setMessagesSentCount(snapshot.size);
-    }, (error) => {
-        console.error("Error fetching message logs:", error);
+       setLoadingFilter(false);
     });
     
-    // Set loading to false once both have been set up
-    // Note: This is a simplification. For production, you might want more robust loading state management.
-    setLoadingFilter(false);
+    const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
+        // Filter by user ID on the client side
+        const userMessages = snapshot.docs.filter(doc => doc.data().userId === user.uid);
+        setMessagesSentCount(userMessages.length);
+        setLoadingFilter(false); // And here
+    }, (error) => {
+        console.error("Error fetching message logs:", error);
+        setLoadingFilter(false);
+    });
 
 
     return () => {
