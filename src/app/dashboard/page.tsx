@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { doc, onSnapshot, collection, query, where, Timestamp, getDocs } from "firebase/firestore"
 import {
@@ -72,21 +72,14 @@ export default function DashboardPage() {
   }, [auth])
 
 
-  useEffect(() => {
-    if (!user) {
-      setFilteredContacts([]);
-      setMessagesSentCount(0);
-      setLoadingFilter(false)
-      return;
-    };
-
+  const fetchData = useCallback(async (currentUser: User, filter: TimeFilter) => {
     setLoadingFilter(true);
 
     const now = new Date();
     let startDate: Date;
     let endDate: Date = now;
 
-    switch (timeFilter) {
+    switch (filter) {
       case "7d":
         startDate = subDays(startOfToday(), 6);
         break;
@@ -105,49 +98,54 @@ export default function DashboardPage() {
     const startTimestamp = Timestamp.fromDate(startDate);
     const endTimestamp = Timestamp.fromDate(endDate);
 
-    const contactsQuery = query(
-      collection(db, "contacts"),
-      where("userId", "==", user.uid),
-      where("lastContact", ">=", startTimestamp),
-      where("lastContact", "<=", endTimestamp)
-    );
-    
-    // This query requires a composite index on userId and timestamp
-    const messagesQuery = query(
-      collection(db, "message_logs"),
-      where("userId", "==", user.uid),
-      where("timestamp", ">=", startTimestamp),
-      where("timestamp", "<=", endTimestamp)
-    );
+    try {
+        const contactsQuery = query(
+            collection(db, "contacts"),
+            where("userId", "==", currentUser.uid),
+            where("lastContact", ">=", startTimestamp),
+            where("lastContact", "<=", endTimestamp)
+        );
+        
+        const messagesQuery = query(
+            collection(db, "message_logs"),
+            where("userId", "==", currentUser.uid),
+            where("timestamp", ">=", startTimestamp),
+            where("timestamp", "<=", endTimestamp)
+        );
 
-    const unsubscribeContacts = onSnapshot(contactsQuery, (snapshot) => {
-      const contactsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().name,
-        product: doc.data().product,
-        status: doc.data().status
-      }));
-      setFilteredContacts(contactsData);
-       setLoadingFilter(false); // Move loading state here
-    }, (error) => {
-      console.error("Error fetching filtered contacts:", error);
-       setLoadingFilter(false);
-    });
-    
-    const unsubscribeMessages = onSnapshot(messagesQuery, (snapshot) => {
-        setMessagesSentCount(snapshot.size);
-        setLoadingFilter(false); // And here
-    }, (error) => {
-        console.error("Error fetching message logs:", error);
+        const [contactsSnapshot, messagesSnapshot] = await Promise.all([
+            getDocs(contactsQuery),
+            getDocs(messagesQuery)
+        ]);
+
+        const contactsData = contactsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            name: doc.data().name,
+            product: doc.data().product,
+            status: doc.data().status
+        }));
+        
+        setFilteredContacts(contactsData);
+        setMessagesSentCount(messagesSnapshot.size);
+
+    } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        setFilteredContacts([]);
+        setMessagesSentCount(0);
+    } finally {
         setLoadingFilter(false);
-    });
+    }
+  }, []);
 
-
-    return () => {
-        unsubscribeContacts();
-        unsubscribeMessages();
-    };
-  }, [user, timeFilter]);
+  useEffect(() => {
+    if (user) {
+      fetchData(user, timeFilter);
+    } else {
+      setFilteredContacts([]);
+      setMessagesSentCount(0);
+      setLoadingFilter(false);
+    }
+  }, [user, timeFilter, fetchData]);
 
   
   const recoveredCount = filteredContacts.filter(c => c.status === 'Recuperado').length;
@@ -296,3 +294,5 @@ export default function DashboardPage() {
     </div>
   )
 }
+
+    
