@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  serverActions: {
+    allowedOrigins: ["*.brs.devtunnels.ms"]
+  },
   serverExternalPackages: ['puppeteer-core', 'puppeteer', 'whatsapp-web.js', 'chrome-aws-lambda'],
 };
 
