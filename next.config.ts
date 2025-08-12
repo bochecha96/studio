@@ -20,7 +20,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      allowedOrigins: ["*.brs.devtunnels.ms", "localhost:9002"]
+      allowedOrigins: ["*.localtunnel.me", "*.brs.devtunnels.ms", "localhost:9002"]
     },
   },
   serverExternalPackages: ['puppeteer-core', 'puppeteer', 'whatsapp-web.js', 'chrome-aws-lambda'],
