@@ -22,6 +22,10 @@ export async function POST(
   console.log(`⏰ Data e Hora: ${new Date().toISOString()}`);
 
   try {
+    const data: WebhookPayload = await request.json();
+    console.log("📦 Payload JSON recebido e processado com sucesso:");
+    console.log(JSON.stringify(data, null, 2));
+    
     const userId = params.userId;
     console.log(`🆔 User ID recebido dos parâmetros: ${userId}`);
 
@@ -29,10 +33,6 @@ export async function POST(
         console.error("❌ Erro: User ID não encontrado nos parâmetros da URL.");
         return NextResponse.json({ status: 'error', message: 'User ID is missing from the webhook URL.' }, { status: 400 });
     }
-
-    const data: WebhookPayload = await request.json();
-    console.log("📦 Payload JSON recebido e processado com sucesso:");
-    console.log(JSON.stringify(data, null, 2));
 
     // Basic validation
     if (!data.customer_name || !data.customer_email || !data.product_name) {
@@ -87,6 +87,8 @@ export async function GET(
   request: Request,
   { params }: { params: { userId: string } }
 ) {
+    // Await something from the request before accessing params
+    await request.text();
     const userId = params.userId;
     console.log(`✅ GET request recebido para o webhook do usuário: ${userId}`);
     return NextResponse.json({ status: 'ok', message: `Webhook endpoint for user ${userId} is active.` }, { status: 200 });
