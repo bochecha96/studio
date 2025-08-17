@@ -20,19 +20,29 @@ export async function POST(
   console.log("==========================================");
   console.log("🚀 INICIANDO PROCESSAMENTO DE WEBHOOK");
   console.log(`⏰ Data e Hora: ${new Date().toISOString()}`);
+  
+  const userId = params.userId;
+  console.log(`🆔 User ID recebido dos parâmetros: ${userId}`);
 
+  if (!userId) {
+      console.error("❌ Erro: User ID não encontrado nos parâmetros da URL.");
+      return NextResponse.json({ status: 'error', message: 'User ID is missing from the webhook URL.' }, { status: 400 });
+  }
+  
   try {
-    const data: WebhookPayload = await request.json();
-    console.log("📦 Payload JSON recebido e processado com sucesso:");
-    console.log(JSON.stringify(data, null, 2));
-    
-    const userId = params.userId;
-    console.log(`🆔 User ID recebido dos parâmetros: ${userId}`);
+    const rawBody = await request.text();
+    console.log("📥 Corpo da requisição (raw) recebido:", rawBody);
 
-    if (!userId) {
-        console.error("❌ Erro: User ID não encontrado nos parâmetros da URL.");
-        return NextResponse.json({ status: 'error', message: 'User ID is missing from the webhook URL.' }, { status: 400 });
+    let data: WebhookPayload;
+    try {
+      data = JSON.parse(rawBody);
+    } catch (e) {
+      console.error("❌ Erro ao fazer o parse do JSON. O corpo recebido não é um JSON válido.");
+      return NextResponse.json({ status: 'error', message: 'Invalid JSON format in request body.' }, { status: 400 });
     }
+
+    console.log("📦 Payload processado com sucesso:");
+    console.log(JSON.stringify(data, null, 2));
 
     // Basic validation
     if (!data.customer_name || !data.customer_email || !data.product_name) {
@@ -73,9 +83,6 @@ export async function POST(
     
   } catch (error: any) {
     console.error("❌ ERRO CRÍTICO NO PROCESSAMENTO DO WEBHOOK ❌");
-    if (error instanceof SyntaxError && error.message.includes("JSON")) {
-      console.error("👉 Causa provável: O corpo da requisição não é um JSON válido.");
-    }
     console.error("Detalhes do erro:", error);
     console.log("==========================================");
     return NextResponse.json({ status: 'error', message: error.message }, { status: 500 });
