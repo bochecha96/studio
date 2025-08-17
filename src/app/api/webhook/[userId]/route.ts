@@ -13,6 +13,12 @@ interface WebhookPayload {
   // Add any other relevant fields from your webhook provider
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
 export async function POST(
   request: Request,
   { params }: { params: { userId: string } }
@@ -26,7 +32,7 @@ export async function POST(
 
   if (!userId) {
       console.error("❌ Erro: User ID não encontrado nos parâmetros da URL.");
-      return NextResponse.json({ status: 'error', message: 'User ID is missing from the webhook URL.' }, { status: 400 });
+      return NextResponse.json({ status: 'error', message: 'User ID is missing from the webhook URL.' }, { status: 400, headers: corsHeaders });
   }
   
   try {
@@ -38,7 +44,7 @@ export async function POST(
       data = JSON.parse(rawBody);
     } catch (e) {
       console.error("❌ Erro ao fazer o parse do JSON. O corpo recebido não é um JSON válido.");
-      return NextResponse.json({ status: 'error', message: 'Invalid JSON format in request body.' }, { status: 400 });
+      return NextResponse.json({ status: 'error', message: 'Invalid JSON format in request body.' }, { status: 400, headers: corsHeaders });
     }
 
     console.log("📦 Payload processado com sucesso:");
@@ -52,7 +58,7 @@ export async function POST(
             customer_email: !!data.customer_email, 
             product_name: !!data.product_name 
         });
-        return NextResponse.json({ status: 'error', message: 'Missing required fields: customer_name, customer_email, product_name' }, { status: 400 });
+        return NextResponse.json({ status: 'error', message: 'Missing required fields: customer_name, customer_email, product_name' }, { status: 400, headers: corsHeaders });
     }
     console.log("✅ Validação do payload bem-sucedida.");
 
@@ -79,13 +85,13 @@ export async function POST(
 
     console.log("🎉 PROCESSAMENTO DE WEBHOOK FINALIZADO COM SUCESSO");
     console.log("==========================================");
-    return NextResponse.json({ status: 'success', message: 'Webhook received and contact created' }, { status: 201 });
+    return NextResponse.json({ status: 'success', message: 'Webhook received and contact created' }, { status: 201, headers: corsHeaders });
     
   } catch (error: any) {
     console.error("❌ ERRO CRÍTICO NO PROCESSAMENTO DO WEBHOOK ❌");
     console.error("Detalhes do erro:", error);
     console.log("==========================================");
-    return NextResponse.json({ status: 'error', message: error.message }, { status: 500 });
+    return NextResponse.json({ status: 'error', message: error.message }, { status: 500, headers: corsHeaders });
   }
 }
 
@@ -98,5 +104,13 @@ export async function GET(
     await request.text();
     const userId = params.userId;
     console.log(`✅ GET request recebido para o webhook do usuário: ${userId}`);
-    return NextResponse.json({ status: 'ok', message: `Webhook endpoint for user ${userId} is active.` }, { status: 200 });
+    return NextResponse.json({ status: 'ok', message: `Webhook endpoint for user ${userId} is active.` }, { status: 200, headers: corsHeaders });
+}
+
+// Add a handler for OPTIONS requests to support CORS pre-flight
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204, // No Content
+    headers: corsHeaders,
+  });
 }
