@@ -273,7 +273,7 @@ export default function SettingsPage() {
                  <p className="text-muted-foreground max-w-xs">{status === 'error' ? 'Ocorreu um erro. Clique para tentar novamente.' : 'Clique no botão para gerar um novo QR Code e conectar.'}</p>
                  <Button onClick={handleGenerateQrCode} disabled={loadingUser || status === 'loading'}>
                     <QrCode className="mr-2 h-4 w-4" />
-                    Conectar com WhatsApp
+                    Gerar QR Code
                  </Button>
                 </>
             ) : status === "connected" ? (
@@ -336,3 +336,5 @@ export default function SettingsPage() {
     </div>
   )
 }
+
+    
