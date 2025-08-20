@@ -82,11 +82,11 @@ export default function SettingsPage() {
             setQrCode(result.qr);
             setStatus("pending_qr");
             // After getting a QR code, poll to see if it becomes connected
-            const interval = setInterval(async () => {
+            const intervalId = setInterval(async () => {
                 try {
                     const statusResult = await checkClientStatus({ userId: user.uid });
                     if (statusResult.status === 'connected') {
-                        clearInterval(interval);
+                        clearInterval(intervalId);
                         setStatus('connected');
                         setQrCode(null);
                         toast({
@@ -96,18 +96,18 @@ export default function SettingsPage() {
                     }
                 } catch (pollError) {
                      console.error("Error polling for status:", pollError);
-                     // Optional: handle polling error, maybe stop polling
+                     clearInterval(intervalId);
                 }
-            }, 60000); // Poll every 1 minute
+            }, 5000); // Poll every 5 seconds
 
             // Set a timeout to stop polling after a while
              setTimeout(() => {
-                clearInterval(interval);
+                clearInterval(intervalId);
                 // Check one last time. If not connected, revert to disconnected.
                 if (status !== 'connected') {
                    setStatus(prevStatus => prevStatus === 'pending_qr' ? 'disconnected' : prevStatus); 
                 }
-            }, 300000); // 5-minute timeout for the whole process
+            }, 180000); // 3-minute timeout for the whole process
 
         } else if (result.status === 'connected') {
             setStatus("connected");
@@ -263,19 +263,8 @@ export default function SettingsPage() {
             ) : status === "loading" ? (
                  <div className="flex flex-col items-center gap-4">
                     <Loader className="h-16 w-16 text-primary animate-spin" />
-                    <p className="text-muted-foreground">Verificando status...</p>
+                    <p className="text-muted-foreground">Gerando QR Code...</p>
                  </div>
-            ) : (status === "disconnected" || status === "error") ? (
-                <>
-                 <div className="p-4 bg-muted rounded-md dark:bg-zinc-800">
-                    <QrCode className="h-16 w-16 text-muted-foreground" />
-                 </div>
-                 <p className="text-muted-foreground max-w-xs">{status === 'error' ? 'Ocorreu um erro. Clique para tentar novamente.' : 'Clique no botão para gerar um novo QR Code e conectar.'}</p>
-                 <Button onClick={handleGenerateQrCode} disabled={loadingUser || status === 'loading'}>
-                    <QrCode className="mr-2 h-4 w-4" />
-                    Gerar QR Code
-                 </Button>
-                </>
             ) : status === "connected" ? (
                 <>
                  <div className="p-4 bg-green-100 rounded-md dark:bg-green-900/50">
@@ -293,7 +282,17 @@ export default function SettingsPage() {
                     </Button>
                  </div>
                 </>
-            ) : null}
+            ) : (
+                <div className="p-4 bg-muted rounded-md dark:bg-zinc-800">
+                    <QrCode className="h-16 w-16 text-muted-foreground" />
+                </div>
+            )}
+             {status !== "connected" && !loadingUser && (
+                <Button onClick={handleGenerateQrCode} disabled={status === 'loading'}>
+                    <QrCode className="mr-2 h-4 w-4" />
+                    {status === 'loading' || status === 'pending_qr' ? 'Reiniciar Conexão' : 'Gerar QR Code'}
+                 </Button>
+             )}
           </div>
         </CardContent>
       </Card>
@@ -336,5 +335,3 @@ export default function SettingsPage() {
     </div>
   )
 }
-
-    
