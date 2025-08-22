@@ -77,6 +77,10 @@ export default function SettingsPage() {
     setQrCode(null)
 
     try {
+        // Explicitly clear any lingering client session before starting a new one.
+        await clearActiveClient({ userId: user.uid });
+        console.log("Previous client cleared. Generating new QR code.");
+
         const result = await generateQrCode({ userId: user.uid });
         if (result.qr) {
             setQrCode(result.qr);
@@ -334,6 +338,5 @@ export default function SettingsPage() {
       </Card>
     </div>
   )
-}
 
     

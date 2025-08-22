@@ -122,10 +122,10 @@ const generateQrCodeFlow = ai.defineFlow(
   },
   async ({ userId }) => {
     
-    console.log(`Initializing client for user ${userId}. Checking for existing connections.`);
-    // Always clear any existing client for this user before starting a new connection process
-    await deleteClient(userId);
-    console.log(`Cleared any old client session for user ${userId}.`);
+    console.log(`Starting a new QR code generation process for user ${userId}.`);
+    
+    // The responsibility to clear old clients is now on the frontend action.
+    // This flow assumes it's starting fresh.
 
     // Dynamically import 'whatsapp-web.js'
     const { Client, LocalAuth } = await import('whatsapp-web.js');
@@ -252,4 +252,4 @@ const checkClientStatusFlow = ai.defineFlow(
     }
 );
 
-
+    
