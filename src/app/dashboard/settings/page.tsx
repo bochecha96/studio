@@ -288,7 +288,7 @@ export default function SettingsPage() {
                 </div>
             )}
              {status !== "connected" && !loadingUser && (
-                <Button onClick={handleGenerateQrCode} disabled={status === 'loading'}>
+                <Button onClick={handleGenerateQrCode}>
                     <QrCode className="mr-2 h-4 w-4" />
                     {status === 'loading' || status === 'pending_qr' ? 'Reiniciar Conexão' : 'Gerar QR Code'}
                  </Button>
