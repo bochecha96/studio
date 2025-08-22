@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview A flow for handling WhatsApp Web connections.
@@ -227,7 +228,7 @@ export async function clearActiveClient(input: ClearClientInput): Promise<void> 
 const clearActiveClientFlow = ai.defineFlow(
     {
         name: 'clearActiveClientFlow',
-        inputSchema: clearClientInput_inputSchema,
+        inputSchema: clearClientInputSchema,
     },
     async ({ userId }) => {
         console.log(`Received request to clear active client for user ${userId}.`);
@@ -250,4 +251,5 @@ const checkClientStatusFlow = ai.defineFlow(
         return { status };
     }
 );
+
 
