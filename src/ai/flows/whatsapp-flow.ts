@@ -13,8 +13,10 @@ import qrcode from 'qrcode';
 import { collection, query, where, getDocs, updateDoc, doc, setDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
-import { setClient, deleteClient, getClient, getClientStatus } from '@/lib/whatsapp-client-manager';
+import { setClient, deleteClient, getClientStatus, startSendingInterval } from '@/lib/whatsapp-client-manager';
 import { generateAnswer } from './generateAnswer-flow';
+import puppeteer from 'puppeteer-core';
+import chrome from 'chrome-aws-lambda';
 
 
 const GenerateQrCodeInputSchema = z.object({
@@ -130,11 +132,15 @@ const generateQrCodeFlow = ai.defineFlow(
     // Dynamically import 'whatsapp-web.js'
     const { Client, LocalAuth } = await import('whatsapp-web.js');
 
-    const client = new Client({
-        authStrategy: new LocalAuth({ dataPath: `.wweb_auth_${userId}` }),
-        puppeteer: {
-          headless: true,
-          args: [
+    const puppeteerOptions = process.env.NODE_ENV === 'production' 
+    ? {
+        executablePath: await chrome.executablePath,
+        args: chrome.args,
+        headless: true,
+      }
+    : {
+        headless: true,
+         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
@@ -144,7 +150,12 @@ const generateQrCodeFlow = ai.defineFlow(
             '--single-process', 
             '--disable-gpu'
           ],
-        },
+    };
+
+
+    const client = new Client({
+        authStrategy: new LocalAuth({ dataPath: `.wweb_auth_${userId}` }),
+        puppeteer: puppeteerOptions,
       });
 
     return new Promise<GenerateQrCodeOutput>((resolve, reject) => {
@@ -190,6 +201,16 @@ const generateQrCodeFlow = ai.defineFlow(
             } catch(error) {
                 console.error(`Error during initial sendNewContacts for user ${userId}:`, error);
             };
+
+             // Start periodic check every 5 minutes
+             const intervalId = setInterval(() => {
+                console.log(`[Interval] Running periodic check for pending contacts for user ${userId}.`);
+                sendNewContacts({ userId }).catch(error => {
+                    console.error(`[Interval] Error sending pending contacts for user ${userId}:`, error);
+                });
+            }, 300000); // 300000 ms = 5 minutes
+
+            startSendingInterval(userId, intervalId);
         });
         
         client.on('auth_failure', (msg) => {

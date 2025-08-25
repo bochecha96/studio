@@ -6,6 +6,7 @@
 import { type Client } from 'whatsapp-web.js';
 
 const activeClients = new Map<string, Client>();
+const intervalTrackers = new Map<string, NodeJS.Timeout>();
 
 /**
  * Stores an active client instance for a given user ID.
@@ -40,6 +41,9 @@ export function getAllClients(): Map<string, Client> {
  * @param userId The user's unique ID.
  */
 export async function deleteClient(userId: string): Promise<void> {
+    // Stop any associated interval first
+    stopSendingInterval(userId);
+
     const client = activeClients.get(userId);
     if (client) {
         try {
@@ -64,3 +68,32 @@ export async function deleteClient(userId: string): Promise<void> {
 export function getClientStatus(userId: string): 'connected' | 'disconnected' {
     return activeClients.has(userId) ? 'connected' : 'disconnected';
 }
+
+
+/**
+ * Stores the interval ID for a user's periodic task.
+ * @param userId The user's unique ID.
+ * @param intervalId The ID of the setInterval timer.
+ */
+export function startSendingInterval(userId: string, intervalId: NodeJS.Timeout): void {
+    // If an old interval exists, clear it before setting a new one.
+    if (intervalTrackers.has(userId)) {
+        stopSendingInterval(userId);
+    }
+    intervalTrackers.set(userId, intervalId);
+    console.log(`Interval tracking started for user ${userId}.`);
+}
+
+/**
+ * Stops the periodic task for a user.
+ * @param userId The user's unique ID.
+ */
+export function stopSendingInterval(userId: string): void {
+    if (intervalTrackers.has(userId)) {
+        clearInterval(intervalTrackers.get(userId)!);
+        intervalTrackers.delete(userId);
+        console.log(`Interval tracking stopped for user ${userId}.`);
+    }
+}
+
+    
