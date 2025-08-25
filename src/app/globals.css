@@ -87,3 +87,7 @@
     @apply bg-background text-foreground m-0;
   }
 }
+
+[data-nextjs-scroll-focus-boundary] {
+  display: none !important;
+}
