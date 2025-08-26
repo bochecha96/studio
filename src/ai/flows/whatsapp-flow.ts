@@ -13,10 +13,8 @@ import qrcode from 'qrcode';
 import { collection, query, where, getDocs, updateDoc, doc, setDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
-import { setClient, deleteClient, getClientStatus, startSendingInterval } from '@/lib/whatsapp-client-manager';
+import { setClient, deleteClient, getClient, getClientStatus,startSendingInterval } from '@/lib/whatsapp-client-manager';
 import { generateAnswer } from './generateAnswer-flow';
-import puppeteer from 'puppeteer-core';
-import chrome from 'chrome-aws-lambda';
 
 
 const GenerateQrCodeInputSchema = z.object({
@@ -118,9 +116,6 @@ const generateQrCodeFlow = ai.defineFlow(
     name: 'generateQrCodeFlow',
     inputSchema: GenerateQrCodeInputSchema,
     outputSchema: GenerateQrCodeOutputSchema,
-    experimental: {
-        timeout: 60000 // 60 seconds timeout
-    }
   },
   async ({ userId }) => {
     
@@ -132,13 +127,9 @@ const generateQrCodeFlow = ai.defineFlow(
     // Dynamically import 'whatsapp-web.js'
     const { Client, LocalAuth } = await import('whatsapp-web.js');
 
-    const puppeteerOptions = process.env.NODE_ENV === 'production' 
-    ? {
-        executablePath: await chrome.executablePath,
-        args: chrome.args,
-        headless: true,
-      }
-    : {
+    const client = new Client({
+        authStrategy: new LocalAuth({ dataPath: `.wweb_auth_${userId}` }),
+        puppeteer: {
         headless: true,
          args: [
             '--no-sandbox',
@@ -150,12 +141,7 @@ const generateQrCodeFlow = ai.defineFlow(
             '--single-process', 
             '--disable-gpu'
           ],
-    };
-
-
-    const client = new Client({
-        authStrategy: new LocalAuth({ dataPath: `.wweb_auth_${userId}` }),
-        puppeteer: puppeteerOptions,
+    },
       });
 
     return new Promise<GenerateQrCodeOutput>((resolve, reject) => {

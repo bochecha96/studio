@@ -183,7 +183,6 @@ function AppSidebar({ user, onLogout }: { user: User, onLogout: () => void }) {
                             <AvatarFallback>{user.email?.[0].toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col text-left">
-                            <span className="text-sm font-semibold text-sidebar-foreground">{user.displayName || 'Usuário'}</span>
                             <span className="text-xs text-muted-foreground">{user.email}</span>
                         </div>
                     </div>
