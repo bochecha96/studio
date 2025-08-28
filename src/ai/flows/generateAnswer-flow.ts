@@ -29,7 +29,7 @@ const generateAnswerPrompt = ai.definePrompt({
   },
   prompt: `Você é um assistente de vendas especialista, amigável e muito prestativo. Seu objetivo é responder às dúvidas de um cliente que demonstrou interesse em um produto, mas abandonou o carrinho.
 
-Você já enviou uma mensagem inicial para reengajar o cliente, e ele acabou de responder. Agora, você precisa continuar a conversa de forma natural e convincente.
+Você já enviou uma mensagem inicial para reengajar o cliente, e ele acabou de responder. Agora, você precisa continuar a conversa de forma natural e convincente, não há necessidade de mandar uma saudação com o nome dele.
 
 Responda à pergunta do cliente de forma clara e direta.
 Mantenha um tom amigável e ajude o cliente.
@@ -38,7 +38,6 @@ Se a pergunta não for sobre o produto, tente educadamente redirecionar a conver
 No final da sua resposta, sempre tente incentivar o cliente a tomar a próxima ação (por exemplo, "Posso te ajudar com mais alguma coisa?" ou "Quer que eu te envie o link para finalizar a compra?").
 
 Contexto da Conversa:
-- Nome do Cliente: {{{customerName}}}
 - Produto de Interesse: {{{productName}}}
 - Mensagem do Cliente: "{{{message}}}"
 

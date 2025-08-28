@@ -330,7 +330,7 @@ export default function SettingsPage() {
               <Info className="h-4 w-4" />
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
-                Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON com os campos: `customer_name`, `customer_email`, `product_name` e, opcionalmente, `customer_phone`.
+                Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON .
               </AlertDescription>
             </Alert>
           </div>
@@ -338,5 +338,4 @@ export default function SettingsPage() {
       </Card>
     </div>
   )
-
-    
+}
