@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { QrCode, XCircle, CheckCircle, Loader, Copy, Check, Info, Send, LogOut } from "lucide-react"
+import { QrCode, XCircle, CheckCircle, Loader2, Copy, Check, Info, Send, LogOut } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { generateQrCode, clearActiveClient, checkClientStatus } from "@/ai/flows/whatsapp-flow"
 import { resendMessages } from "@/ai/flows/resendMessages-flow"
@@ -41,6 +41,57 @@ export default function SettingsPage() {
   const { toast } = useToast()
   const auth = getAuth(app)
 
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Function to check status, used by polling and initial load
+  const updateStatus = useCallback(async (userId: string) => {
+    try {
+      const result = await checkClientStatus({ userId });
+      setStatus(prevStatus => {
+        const newStatus = result.status as ConnectionStatus;
+        // If status changes from pending to connected, show toast
+        if (prevStatus === 'pending_qr' && newStatus === 'connected') {
+          toast({
+            title: "Conexão estabelecida!",
+            description: "Seu WhatsApp foi conectado com sucesso.",
+          });
+          setQrCode(null); // Clear QR code on successful connection
+        }
+        return newStatus;
+      });
+    } catch (error) {
+      console.error("Error checking client status:", error);
+      setStatus("error"); // Set to error on failure
+    }
+  }, [toast]);
+  
+  // Effect to manage polling interval
+  useEffect(() => {
+    if (user && (status === 'pending_qr' || status === 'loading')) {
+      // Start polling if we are in a pending or initial loading state
+      if (!pollingIntervalRef.current) {
+        pollingIntervalRef.current = setInterval(() => {
+          updateStatus(user.uid);
+        }, 3000); // Poll every 3 seconds
+      }
+    } else if (status === 'connected' || status === 'disconnected' || status === 'error') {
+      // Stop polling if we reached a final state
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [user, status, updateStatus]);
+
+  // Effect for authenticating user and setting initial state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setLoadingUser(true);
@@ -49,11 +100,8 @@ export default function SettingsPage() {
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
         }
-        // Initial status check when user is loaded
-        checkClientStatus({ userId: currentUser.uid })
-            .then(result => setStatus(result.status as ConnectionStatus))
-            .catch(() => setStatus('error'));
-
+        // Initial status check
+        updateStatus(currentUser.uid);
       } else {
         setUser(null)
         setStatus("disconnected");
@@ -61,10 +109,8 @@ export default function SettingsPage() {
       setLoadingUser(false)
     })
     
-    return () => {
-        unsubscribe();
-    }
-  }, [auth])
+    return () => unsubscribe()
+  }, [auth, updateStatus])
 
 
   const handleGenerateQrCode = async () => {
@@ -77,51 +123,14 @@ export default function SettingsPage() {
     setQrCode(null)
 
     try {
-        // Explicitly clear any lingering client session before starting a new one.
         await clearActiveClient({ userId: user.uid });
-        console.log("Previous client cleared. Generating new QR code.");
-
         const result = await generateQrCode({ userId: user.uid });
         if (result.qr) {
             setQrCode(result.qr);
             setStatus("pending_qr");
-            // After getting a QR code, poll to see if it becomes connected
-            const intervalId = setInterval(async () => {
-                try {
-                    const statusResult = await checkClientStatus({ userId: user.uid });
-                    if (statusResult.status === 'connected') {
-                        clearInterval(intervalId);
-                        setStatus('connected');
-                        setQrCode(null);
-                        toast({
-                            title: "Conexão estabelecida!",
-                            description: "Seu WhatsApp foi conectado com sucesso.",
-                        });
-                    }
-                } catch (pollError) {
-                     console.error("Error polling for status:", pollError);
-                     clearInterval(intervalId);
-                }
-            }, 5000); // Poll every 5 seconds
-
-            // Set a timeout to stop polling after a while
-             setTimeout(() => {
-                clearInterval(intervalId);
-                // Check one last time. If not connected, revert to disconnected.
-                if (status !== 'connected') {
-                   setStatus(prevStatus => prevStatus === 'pending_qr' ? 'disconnected' : prevStatus); 
-                }
-            }, 180000); // 3-minute timeout for the whole process
-
-        } else if (result.status === 'connected') {
-            setStatus("connected");
-            setQrCode(null);
-            toast({
-                title: "Conexão estabelecida!",
-                description: result.message || "Seu WhatsApp foi conectado com sucesso.",
-            });
         } else {
-            setStatus(result.status as ConnectionStatus || "error");
+            // This case might happen if it's already connected, re-check status
+            updateStatus(user.uid);
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
@@ -207,12 +216,12 @@ export default function SettingsPage() {
         }
        case "pending_qr":
          return {
-          badge: <Badge variant="secondary" className="flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" />Aguardando</Badge>,
+          badge: <Badge variant="secondary" className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Aguardando</Badge>,
           description: "Escaneie o QR Code com seu celular para conectar.",
         }
       case "loading":
          return {
-          badge: <Badge variant="secondary" className="flex items-center gap-1"><Loader className="h-3 w-3 animate-spin" />Carregando</Badge>,
+          badge: <Badge variant="secondary" className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Carregando</Badge>,
           description: "Verificando status da conexão...",
         }
       case "error":
@@ -256,7 +265,7 @@ export default function SettingsPage() {
           <div className="p-4 border rounded-lg flex flex-col items-center justify-center text-center space-y-4 min-h-[280px]">
              {loadingUser ? (
                  <div className="flex flex-col items-center gap-4">
-                    <Loader className="h-16 w-16 text-primary animate-spin" />
+                    <Loader2 className="h-16 w-16 text-primary animate-spin" />
                     <p className="text-muted-foreground">Carregando dados do usuário...</p>
                  </div>
             ) : status === "pending_qr" && qrCode ? (
@@ -266,7 +275,7 @@ export default function SettingsPage() {
               </>
             ) : status === "loading" ? (
                  <div className="flex flex-col items-center gap-4">
-                    <Loader className="h-16 w-16 text-primary animate-spin" />
+                    <Loader2 className="h-16 w-16 text-primary animate-spin" />
                     <p className="text-muted-foreground">Gerando QR Code...</p>
                  </div>
             ) : status === "connected" ? (
@@ -281,7 +290,7 @@ export default function SettingsPage() {
                         Desconectar
                     </Button>
                     <Button onClick={handleTestSend} disabled={isSendingTest}>
-                        {isSendingTest ? <Loader className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
+                        {isSendingTest ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Send className="mr-2 h-4 w-4" />}
                         {isSendingTest ? "Enviando..." : "Reenviar Pendentes"}
                     </Button>
                  </div>
@@ -292,9 +301,9 @@ export default function SettingsPage() {
                 </div>
             )}
              {status !== "connected" && !loadingUser && (
-                <Button onClick={handleGenerateQrCode}>
+                <Button onClick={handleGenerateQrCode} disabled={status === 'loading' || status === 'pending_qr'}>
                     <QrCode className="mr-2 h-4 w-4" />
-                    {status === 'loading' || status === 'pending_qr' ? 'Reiniciar Conexão' : 'Gerar QR Code'}
+                    {status === 'loading' || status === 'pending_qr' ? 'Aguarde...' : 'Gerar QR Code'}
                  </Button>
              )}
           </div>
@@ -331,7 +340,7 @@ export default function SettingsPage() {
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON .
-              </AlertDescription>
+              </Aler_Description>
             </Alert>
           </div>
         </CardContent>
@@ -339,3 +348,5 @@ export default function SettingsPage() {
     </div>
   )
 }
+
+    
