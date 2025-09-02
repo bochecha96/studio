@@ -157,7 +157,7 @@ const generateQrCodeFlow = ai.defineFlow(
                     deleteClient(userId);
                     reject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'));
                 }
-            }, 45000);
+            }, 120000);
 
             client.on('qr', async (qr) => {
                 console.log(`QR RECEIVED for ${userId}.`);
