@@ -13,7 +13,7 @@ import qrcode from 'qrcode';
 import { collection, query, where, getDocs, updateDoc, doc, setDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
-import { setClient, deleteClient, getClient, getClientStatus,startSendingInterval } from '@/lib/whatsapp-client-manager';
+import { setClient, deleteClient, getClientStatus,startSendingInterval } from '@/lib/whatsapp-client-manager';
 import { generateAnswer } from './generateAnswer-flow';
 import { acquireLock, releaseLock } from '@/lib/lock-manager';
 
@@ -125,6 +125,7 @@ const generateQrCodeFlow = ai.defineFlow(
         throw new Error('O processo de conexão já está em andamento. Aguarde a conclusão ou tente novamente em alguns instantes.');
     }
 
+    // Wrap the entire logic in a try...finally to ensure the lock is always released.
     try {
         console.log(`Starting a new QR code generation process for user ${userId}.`);
         
@@ -147,17 +148,23 @@ const generateQrCodeFlow = ai.defineFlow(
         },
         });
 
-        return new Promise<GenerateQrCodeOutput>((resolve, reject) => {
+        // This promise will wrap the entire connection lifecycle
+        return await new Promise<GenerateQrCodeOutput>((resolve, reject) => {
             let qrResolved = false;
+
+            const cleanupAndReject = (error: Error) => {
+                clearTimeout(timeoutId);
+                client.destroy().catch(e => console.error("Error destroying client on cleanup", e));
+                deleteClient(userId); // This already releases the lock
+                reject(error);
+            };
 
             const timeoutId = setTimeout(() => {
                 if (!client.info) {
-                    console.log(`Connection timed out for user ${userId}. Destroying client.`);
-                    client.destroy().catch(e => console.error("Error destroying client on timeout", e));
-                    deleteClient(userId);
-                    reject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'));
+                    console.log(`Connection timed out for user ${userId}.`);
+                    cleanupAndReject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'));
                 }
-            }, 120000);
+            }, 120000); // 2 minutes timeout
 
             client.on('qr', async (qr) => {
                 console.log(`QR RECEIVED for ${userId}.`);
@@ -165,11 +172,11 @@ const generateQrCodeFlow = ai.defineFlow(
                     try {
                         const qrCodeDataUri = await qrcode.toDataURL(qr);
                         qrResolved = true;
+                        // We resolve with the QR code, but the lock remains until a final state is reached.
                         resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
                     } catch (err) {
                         console.error("Failed to generate QR code data URI:", err);
-                        clearTimeout(timeoutId);
-                        reject(new Error("Falha ao gerar o QR code."));
+                        cleanupAndReject(new Error("Falha ao gerar o QR code."));
                     }
                 }
             });
@@ -195,34 +202,33 @@ const generateQrCodeFlow = ai.defineFlow(
                 }, 300000);
 
                 startSendingInterval(userId, intervalId);
-                // Since the client is now ready, we can release the lock.
-                // The main promise will resolve/reject based on other events.
+                // IMPORTANT: Release the lock only after the client is fully ready and configured.
                 releaseLock(userId);
             });
             
             client.on('auth_failure', (msg) => {
                 console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
-                clearTimeout(timeoutId);
-                deleteClient(userId);
-                reject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'));
+                cleanupAndReject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'));
             });
 
             client.on('disconnected', (reason) => {
                 console.log(`Client for ${userId} was logged out:`, reason);
+                // This is a final state, so we ensure cleanup happens.
                 clearTimeout(timeoutId);
-                deleteClient(userId);
+                deleteClient(userId); // This will release the lock.
             });
 
             client.initialize().catch(err => {
                 console.error(`Client initialization error for ${userId}:`, err);
-                clearTimeout(timeoutId);
-                reject(new Error("Falha ao inicializar o cliente WhatsApp. Tente novamente."));
+                cleanupAndReject(new Error("Falha ao inicializar o cliente WhatsApp. Tente novamente."));
             });
         });
-    } finally {
-        // Ensure the lock is always released when the flow finishes,
-        // either by resolving or rejecting.
+    } catch (error) {
+        // If any error escapes the promise, we must release the lock.
+        console.error(`Caught top-level error in generateQrCodeFlow for ${userId}:`, error);
         releaseLock(userId);
+        // Re-throw the error to be handled by Genkit
+        throw error;
     }
   }
 );
