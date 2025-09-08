@@ -125,7 +125,6 @@ const generateQrCodeFlow = ai.defineFlow(
         throw new Error('O processo de conexão já está em andamento. Aguarde a conclusão ou tente novamente em alguns instantes.');
     }
 
-    // Wrap the entire logic in a try...finally to ensure the lock is always released.
     try {
         console.log(`Starting a new QR code generation process for user ${userId}.`);
         
@@ -156,11 +155,14 @@ const generateQrCodeFlow = ai.defineFlow(
                 clearTimeout(timeoutId);
                 client.destroy().catch(e => console.error("Error destroying client on cleanup", e));
                 deleteClient(userId); // This already releases the lock
-                reject(error);
+                if (!qrResolved) {
+                    reject(error);
+                }
             };
-
+            
             const timeoutId = setTimeout(() => {
-                if (!client.info) {
+                // Only time out if we haven't even received a QR code and are not connected.
+                if (!qrResolved && !client.info) {
                     console.log(`Connection timed out for user ${userId}.`);
                     cleanupAndReject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'));
                 }
@@ -172,7 +174,6 @@ const generateQrCodeFlow = ai.defineFlow(
                     try {
                         const qrCodeDataUri = await qrcode.toDataURL(qr);
                         qrResolved = true;
-                        // We resolve with the QR code, but the lock remains until a final state is reached.
                         resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
                     } catch (err) {
                         console.error("Failed to generate QR code data URI:", err);
@@ -202,7 +203,6 @@ const generateQrCodeFlow = ai.defineFlow(
                 }, 300000);
 
                 startSendingInterval(userId, intervalId);
-                // IMPORTANT: Release the lock only after the client is fully ready and configured.
                 releaseLock(userId);
             });
             
@@ -213,9 +213,7 @@ const generateQrCodeFlow = ai.defineFlow(
 
             client.on('disconnected', (reason) => {
                 console.log(`Client for ${userId} was logged out:`, reason);
-                // This is a final state, so we ensure cleanup happens.
-                clearTimeout(timeoutId);
-                deleteClient(userId); // This will release the lock.
+                cleanupAndReject(new Error('Cliente foi desconectado.'));
             });
 
             client.initialize().catch(err => {
@@ -224,10 +222,8 @@ const generateQrCodeFlow = ai.defineFlow(
             });
         });
     } catch (error) {
-        // If any error escapes the promise, we must release the lock.
         console.error(`Caught top-level error in generateQrCodeFlow for ${userId}:`, error);
         releaseLock(userId);
-        // Re-throw the error to be handled by Genkit
         throw error;
     }
   }
