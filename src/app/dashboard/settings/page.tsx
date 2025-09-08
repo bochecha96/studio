@@ -61,21 +61,22 @@ export default function SettingsPage() {
       });
     } catch (error) {
       console.error("Error checking client status:", error);
-      setStatus("error"); // Set to error on failure
+      // Don't set to error on a failed poll, just log it. 
+      // The user might have just lost internet connection temporarily.
     }
   }, [toast]);
   
   // Effect to manage polling interval
   useEffect(() => {
-    if (user && (status === 'pending_qr' || status === 'loading')) {
-      // Start polling if we are in a pending or initial loading state
+    if (user && status === 'pending_qr') {
+      // Start polling if we are waiting for QR scan
       if (!pollingIntervalRef.current) {
         pollingIntervalRef.current = setInterval(() => {
           updateStatus(user.uid);
         }, 3000); // Poll every 3 seconds
       }
-    } else if (status === 'connected' || status === 'disconnected' || status === 'error') {
-      // Stop polling if we reached a final state
+    } else if (status !== 'pending_qr') {
+      // Stop polling if we are not in a pending state
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -86,7 +87,6 @@ export default function SettingsPage() {
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
       }
     };
   }, [user, status, updateStatus]);
@@ -101,7 +101,7 @@ export default function SettingsPage() {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
         }
         // Initial status check
-        updateStatus(currentUser.uid);
+        checkClientStatus({userId: currentUser.uid}).then(res => setStatus(res.status as ConnectionStatus));
       } else {
         setUser(null)
         setStatus("disconnected");
@@ -110,7 +110,7 @@ export default function SettingsPage() {
     })
     
     return () => unsubscribe()
-  }, [auth, updateStatus])
+  }, [auth])
 
 
   const handleGenerateQrCode = async () => {
@@ -121,16 +121,22 @@ export default function SettingsPage() {
     
     setStatus("loading")
     setQrCode(null)
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
 
     try {
         await clearActiveClient({ userId: user.uid });
         const result = await generateQrCode({ userId: user.uid });
+
         if (result.qr) {
             setQrCode(result.qr);
             setStatus("pending_qr");
+        } else if (result.status === 'connected') {
+             setStatus('connected');
+             toast({ title: "Sucesso", description: "A sessão existente foi reconectada." });
         } else {
             // This case might happen if it's already connected, re-check status
-            updateStatus(user.uid);
+             const currentStatus = await checkClientStatus({userId: user.uid});
+             setStatus(currentStatus.status as ConnectionStatus);
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
@@ -150,6 +156,7 @@ export default function SettingsPage() {
         await clearActiveClient({ userId: user.uid });
         setStatus("disconnected")
         setQrCode(null)
+        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
         toast({
             title: "Desconectado",
             description: "Sua sessão do WhatsApp foi encerrada.",
