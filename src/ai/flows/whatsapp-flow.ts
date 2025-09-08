@@ -151,20 +151,31 @@ const generateQrCodeFlow = ai.defineFlow(
         return await new Promise<GenerateQrCodeOutput>((resolve, reject) => {
             let qrResolved = false;
 
-            const cleanupAndReject = (error: Error) => {
+            const cleanup = (timeoutId: NodeJS.Timeout) => {
                 clearTimeout(timeoutId);
+                // Detach all listeners to prevent memory leaks
+                client.removeAllListeners('qr');
+                client.removeAllListeners('ready');
+                client.removeAllListeners('auth_failure');
+                client.removeAllListeners('disconnected');
+            };
+            
+            const cleanupAndReject = (error: Error, timeoutId: NodeJS.Timeout) => {
+                cleanup(timeoutId);
                 client.destroy().catch(e => console.error("Error destroying client on cleanup", e));
-                deleteClient(userId); // This will also release the lock
-                if (!qrResolved) {
-                    reject(error);
-                }
+                // Important: release lock only on failure/timeout
+                releaseLock(userId);
+                reject(error);
             };
             
             const timeoutId = setTimeout(() => {
-                if (!client.info) {
-                    console.log(`Connection timed out for user ${userId}.`);
-                    cleanupAndReject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'));
+                // If QR was never resolved, it means the client initialization failed to even produce a QR code.
+                if (!qrResolved) {
+                    console.log(`Connection timed out for user ${userId} before QR was generated.`);
+                    cleanupAndReject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'), timeoutId);
                 }
+                // If QR was resolved, we let the connection live, the user might still be scanning it.
+                // A separate mechanism should handle cleanup if the user abandons the page.
             }, 120000); // 2 minutes timeout
 
             client.on('qr', async (qr) => {
@@ -173,19 +184,18 @@ const generateQrCodeFlow = ai.defineFlow(
                     try {
                         const qrCodeDataUri = await qrcode.toDataURL(qr);
                         qrResolved = true;
-                        // Resolve with the QR code, but the promise is not fully done.
-                        // The frontend will start polling.
+                        // Resolve with the QR code, this is the first update to the frontend.
                         resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
                     } catch (err) {
                         console.error("Failed to generate QR code data URI:", err);
-                        cleanupAndReject(new Error("Falha ao gerar o QR code."));
+                        cleanupAndReject(new Error("Falha ao gerar o QR code."), timeoutId);
                     }
                 }
             });
 
             client.on('ready', async () => {
                 console.log(`Client for ${userId} is ready! Setting up for message receiving.`);
-                clearTimeout(timeoutId);
+                cleanup(timeoutId); // Connection successful, clear timeout and listeners
                 setClient(userId, client);
                 
                 client.on('message', (message) => handleIncomingMessage(message, userId, client));
@@ -205,25 +215,27 @@ const generateQrCodeFlow = ai.defineFlow(
 
                 startSendingInterval(userId, intervalId);
                 // The main setup is complete. Release the lock.
-                // The frontend will confirm the 'connected' status via polling.
                 releaseLock(userId);
+
+                // Now, we need to inform the frontend. Since the promise might have already resolved with the QR,
+                // this won't work. The frontend needs to poll. The alternative is a more complex streaming setup.
+                // For now, the frontend polling mechanism is the primary way to get the 'connected' status.
             });
             
             client.on('auth_failure', (msg) => {
                 console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
-                cleanupAndReject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'));
+                cleanupAndReject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'), timeoutId);
             });
 
             client.on('disconnected', (reason) => {
                 console.log(`Client for ${userId} was logged out:`, reason);
-                // Don't reject here as it might be an expected logout. 
-                // The client is deleted via deleteClient.
-                cleanupAndReject(new Error('Cliente foi desconectado.'));
+                // This is a terminal state.
+                cleanupAndReject(new Error('Cliente foi desconectado.'), timeoutId);
             });
 
             client.initialize().catch(err => {
                 console.error(`Client initialization error for ${userId}:`, err);
-                cleanupAndReject(new Error("Falha ao inicializar o cliente WhatsApp. Tente novamente."));
+                cleanupAndReject(new Error("Falha ao inicializar o cliente WhatsApp. Tente novamente."), timeoutId);
             });
         });
     } catch (error) {
