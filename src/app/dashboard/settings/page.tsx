@@ -100,8 +100,6 @@ export default function SettingsPage() {
     setQrCode(null)
 
     try {
-        await clearActiveClient({ userId: user.uid });
-        
         const result = await generateQrCode({ userId: user.uid });
 
         if (result.qr && result.status === 'pending_qr') {
@@ -120,12 +118,22 @@ export default function SettingsPage() {
                             description: "Seu WhatsApp foi conectado com sucesso.",
                         });
                         stopPolling();
+                    } else if (statusResult.status === 'disconnected') {
+                        setStatus('error');
+                        setQrCode(null);
+                        toast({
+                            title: "Falha na Conexão",
+                            description: "A conexão foi perdida ou falhou. Tente gerar um novo QR Code.",
+                            variant: "destructive",
+                        });
+                        stopPolling();
                     }
                 } catch (pollError) {
                     console.error("Error polling for status:", pollError);
                     setStatus('error');
+                    stopPolling();
                 }
-            }, 3000); // Poll every 3 seconds
+            }, 5000); // Poll every 5 seconds
 
         } else if (result.status === 'connected') {
              setStatus('connected');
@@ -346,5 +354,12 @@ export default function SettingsPage() {
               <Info className="h-4 w-4" />
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
-                Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON .
-              </Aler
+                Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON.
+              </AlertDescription>
+            </Alert>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
