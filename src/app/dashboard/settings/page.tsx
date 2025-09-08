@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { Button } from "@/components/ui/button"
@@ -40,56 +40,8 @@ export default function SettingsPage() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const { toast } = useToast()
   const auth = getAuth(app)
-
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Function to check status, used by polling and initial load
-  const updateStatus = useCallback(async (userId: string) => {
-    try {
-      const result = await checkClientStatus({ userId });
-      setStatus(prevStatus => {
-        const newStatus = result.status as ConnectionStatus;
-        // If status changes from pending to connected, show toast
-        if (prevStatus === 'pending_qr' && newStatus === 'connected') {
-          toast({
-            title: "Conexão estabelecida!",
-            description: "Seu WhatsApp foi conectado com sucesso.",
-          });
-          setQrCode(null); // Clear QR code on successful connection
-        }
-        return newStatus;
-      });
-    } catch (error) {
-      console.error("Error checking client status:", error);
-      // Don't set to error on a failed poll, just log it. 
-      // The user might have just lost internet connection temporarily.
-    }
-  }, [toast]);
-  
-  // Effect to manage polling interval
-  useEffect(() => {
-    if (user && status === 'pending_qr') {
-      // Start polling if we are waiting for QR scan
-      if (!pollingIntervalRef.current) {
-        pollingIntervalRef.current = setInterval(() => {
-          updateStatus(user.uid);
-        }, 3000); // Poll every 3 seconds
-      }
-    } else if (status !== 'pending_qr') {
-      // Stop polling if we are not in a pending state
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    }
-    
-    // Cleanup on unmount
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, [user, status, updateStatus]);
 
   // Effect for authenticating user and setting initial state
   useEffect(() => {
@@ -109,8 +61,22 @@ export default function SettingsPage() {
       setLoadingUser(false)
     })
     
-    return () => unsubscribe()
-  }, [auth])
+    // Cleanup polling on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+      unsubscribe();
+    }
+  }, [auth]);
+
+  // Cleanup polling when status is not pending anymore
+  useEffect(() => {
+    if (status !== 'pending_qr' && pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, [status]);
 
 
   const handleGenerateQrCode = async () => {
@@ -118,25 +84,47 @@ export default function SettingsPage() {
         toast({ title: "Erro", description: "Usuário não autenticado.", variant: "destructive" });
         return;
     }
+
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     
     setStatus("loading")
     setQrCode(null)
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
 
     try {
+        // We ensure any previous connection or attempt is fully cleared.
         await clearActiveClient({ userId: user.uid });
+        
         const result = await generateQrCode({ userId: user.uid });
 
         if (result.qr) {
             setQrCode(result.qr);
             setStatus("pending_qr");
-        } else if (result.status === 'connected') {
-             setStatus('connected');
-             toast({ title: "Sucesso", description: "A sessão existente foi reconectada." });
+
+            // Start polling ONLY after we get a QR code
+            pollingIntervalRef.current = setInterval(async () => {
+                try {
+                    const statusResult = await checkClientStatus({ userId: user.uid });
+                    if (statusResult.status === 'connected') {
+                        setStatus('connected');
+                        setQrCode(null);
+                        toast({
+                            title: "Conexão estabelecida!",
+                            description: "Seu WhatsApp foi conectado com sucesso.",
+                        });
+                        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+                    }
+                } catch (pollError) {
+                    console.error("Error polling for status:", pollError);
+                }
+            }, 3000); // Poll every 3 seconds
+
         } else {
-            // This case might happen if it's already connected, re-check status
-             const currentStatus = await checkClientStatus({userId: user.uid});
-             setStatus(currentStatus.status as ConnectionStatus);
+            setStatus("error");
+            toast({
+                title: "Erro na Conexão",
+                description: result.message || "Não foi possível obter o QR Code.",
+                variant: "destructive",
+            });
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
@@ -152,11 +140,11 @@ export default function SettingsPage() {
   
   const handleDisconnect = async () => {
     if (!user) return;
+    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     try {
         await clearActiveClient({ userId: user.uid });
         setStatus("disconnected")
         setQrCode(null)
-        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
         toast({
             title: "Desconectado",
             description: "Sua sessão do WhatsApp foi encerrada.",
@@ -349,11 +337,9 @@ export default function SettingsPage() {
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON .
               </AlertDescription>
             </Alert>
-          </div>
+           </div>
         </CardContent>
       </Card>
     </div>
   )
 }
-
-    
