@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { Button } from "@/components/ui/button"
@@ -76,6 +76,14 @@ export default function SettingsPage() {
     setStatus("loading");
     setQrCode(null);
 
+    // Check status first, as per user's suggestion.
+    const currentStatus = await checkClientStatus({ userId: user.uid });
+    if (currentStatus.status === 'connected') {
+        setStatus('connected');
+        toast({ title: "Informação", description: "O WhatsApp já está conectado." });
+        return;
+    }
+
     try {
         const result = await generateQrCode({ userId: user.uid });
         
@@ -95,13 +103,16 @@ export default function SettingsPage() {
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
-        setStatus("error");
-        setQrCode(null);
-        toast({
-            title: "Erro na Conexão",
-            description: error.message || "Não foi possível conectar. Tente novamente.",
-            variant: "destructive",
-        });
+        // Don't show toast for "already in progress" as it's a controlled state
+        if (!error.message.includes('em andamento')) {
+            setStatus("error");
+            setQrCode(null);
+            toast({
+                title: "Erro na Conexão",
+                description: error.message || "Não foi possível conectar. Tente novamente.",
+                variant: "destructive",
+            });
+        }
     }
   }
   
