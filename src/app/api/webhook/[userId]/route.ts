@@ -90,7 +90,7 @@ export async function POST(
   } catch (error: any) {
     console.error("❌ ERRO CRÍTICO NO PROCESSAMENTO DO WEBHOOK ❌");
     console.error("Detalhes do erro:", error);
-    console.log("==========================================");
+    console.log("=========================================");
     return NextResponse.json({ status: 'error', message: error.message }, { status: 500, headers: corsHeaders });
   }
 }
