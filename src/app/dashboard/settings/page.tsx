@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Image from "next/image"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { Button } from "@/components/ui/button"
@@ -42,6 +42,12 @@ export default function SettingsPage() {
   const auth = getAuth(app)
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
 
   // Effect for authenticating user and setting initial state
   useEffect(() => {
@@ -53,7 +59,13 @@ export default function SettingsPage() {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
         }
         // Initial status check
-        checkClientStatus({userId: currentUser.uid}).then(res => setStatus(res.status as ConnectionStatus));
+        checkClientStatus({userId: currentUser.uid}).then(res => {
+            const currentStatus = res.status as ConnectionStatus;
+            setStatus(currentStatus);
+            if (currentStatus !== 'connected') {
+                setQrCode(null);
+            }
+        });
       } else {
         setUser(null)
         setStatus("disconnected");
@@ -63,20 +75,17 @@ export default function SettingsPage() {
     
     // Cleanup polling on unmount
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
+      stopPolling();
       unsubscribe();
     }
-  }, [auth]);
+  }, [auth, stopPolling]);
 
   // Cleanup polling when status is not pending anymore
   useEffect(() => {
-    if (status !== 'pending_qr' && pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
+    if (status !== 'pending_qr') {
+        stopPolling();
     }
-  }, [status]);
+  }, [status, stopPolling]);
 
 
   const handleGenerateQrCode = async () => {
@@ -85,18 +94,17 @@ export default function SettingsPage() {
         return;
     }
 
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    stopPolling();
     
     setStatus("loading")
     setQrCode(null)
 
     try {
-        // We ensure any previous connection or attempt is fully cleared.
         await clearActiveClient({ userId: user.uid });
         
         const result = await generateQrCode({ userId: user.uid });
 
-        if (result.qr) {
+        if (result.qr && result.status === 'pending_qr') {
             setQrCode(result.qr);
             setStatus("pending_qr");
 
@@ -111,13 +119,17 @@ export default function SettingsPage() {
                             title: "Conexão estabelecida!",
                             description: "Seu WhatsApp foi conectado com sucesso.",
                         });
-                        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+                        stopPolling();
                     }
                 } catch (pollError) {
                     console.error("Error polling for status:", pollError);
+                    setStatus('error');
                 }
             }, 3000); // Poll every 3 seconds
 
+        } else if (result.status === 'connected') {
+             setStatus('connected');
+             setQrCode(null);
         } else {
             setStatus("error");
             toast({
@@ -140,7 +152,7 @@ export default function SettingsPage() {
   
   const handleDisconnect = async () => {
     if (!user) return;
-    if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    stopPolling();
     try {
         await clearActiveClient({ userId: user.uid });
         setStatus("disconnected")
@@ -335,11 +347,4 @@ export default function SettingsPage() {
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON .
-              </AlertDescription>
-            </Alert>
-           </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
+              </Aler

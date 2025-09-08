@@ -154,15 +154,14 @@ const generateQrCodeFlow = ai.defineFlow(
             const cleanupAndReject = (error: Error) => {
                 clearTimeout(timeoutId);
                 client.destroy().catch(e => console.error("Error destroying client on cleanup", e));
-                deleteClient(userId); // This already releases the lock
+                deleteClient(userId); // This will also release the lock
                 if (!qrResolved) {
                     reject(error);
                 }
             };
             
             const timeoutId = setTimeout(() => {
-                // Only time out if we haven't even received a QR code and are not connected.
-                if (!qrResolved && !client.info) {
+                if (!client.info) {
                     console.log(`Connection timed out for user ${userId}.`);
                     cleanupAndReject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'));
                 }
@@ -174,6 +173,8 @@ const generateQrCodeFlow = ai.defineFlow(
                     try {
                         const qrCodeDataUri = await qrcode.toDataURL(qr);
                         qrResolved = true;
+                        // Resolve with the QR code, but the promise is not fully done.
+                        // The frontend will start polling.
                         resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
                     } catch (err) {
                         console.error("Failed to generate QR code data URI:", err);
@@ -203,6 +204,8 @@ const generateQrCodeFlow = ai.defineFlow(
                 }, 300000);
 
                 startSendingInterval(userId, intervalId);
+                // The main setup is complete. Release the lock.
+                // The frontend will confirm the 'connected' status via polling.
                 releaseLock(userId);
             });
             
@@ -213,6 +216,8 @@ const generateQrCodeFlow = ai.defineFlow(
 
             client.on('disconnected', (reason) => {
                 console.log(`Client for ${userId} was logged out:`, reason);
+                // Don't reject here as it might be an expected logout. 
+                // The client is deleted via deleteClient.
                 cleanupAndReject(new Error('Cliente foi desconectado.'));
             });
 
@@ -223,6 +228,7 @@ const generateQrCodeFlow = ai.defineFlow(
         });
     } catch (error) {
         console.error(`Caught top-level error in generateQrCodeFlow for ${userId}:`, error);
+        // Ensure lock is always released on top-level error
         releaseLock(userId);
         throw error;
     }
