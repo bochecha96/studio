@@ -40,14 +40,6 @@ export default function SettingsPage() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const { toast } = useToast()
   const auth = getAuth(app)
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const stopPolling = useCallback(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-  }, []);
 
   // Effect for authenticating user and setting initial state
   useEffect(() => {
@@ -58,13 +50,9 @@ export default function SettingsPage() {
         if (typeof window !== "undefined") {
           setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
         }
-        // Initial status check
+        // Initial status check when page loads
         checkClientStatus({userId: currentUser.uid}).then(res => {
-            const currentStatus = res.status as ConnectionStatus;
-            setStatus(currentStatus);
-            if (currentStatus !== 'connected') {
-                setQrCode(null);
-            }
+            setStatus(res.status as ConnectionStatus);
         });
       } else {
         setUser(null)
@@ -73,23 +61,8 @@ export default function SettingsPage() {
       setLoadingUser(false)
     })
     
-    // Cleanup polling on unmount
-    return () => {
-      stopPolling();
-      unsubscribe();
-    }
-  }, [auth, stopPolling]);
-
-  // Cleanup polling when status is not pending anymore
-  useEffect(() => {
-    if (status !== 'pending_qr') {
-        stopPolling();
-    }
-    // Also stop if user logs out
-    if (!user) {
-        stopPolling();
-    }
-  }, [status, stopPolling, user]);
+    return () => unsubscribe()
+  }, [auth]);
 
 
   const handleGenerateQrCode = async () => {
@@ -97,53 +70,46 @@ export default function SettingsPage() {
         toast({ title: "Erro", description: "Usuário não autenticado.", variant: "destructive" });
         return;
     }
-
-    stopPolling();
     
     setStatus("loading")
     setQrCode(null)
 
     try {
-        // We start the QR code generation process. This flow will resolve with a QR code first.
+        // This flow now handles the entire lifecycle, including waiting for 'ready'
         const result = await generateQrCode({ userId: user.uid });
 
         if (result.qr && result.status === 'pending_qr') {
             setQrCode(result.qr);
             setStatus("pending_qr");
-
-            // Start polling to check for the final 'connected' status
-            pollingIntervalRef.current = setInterval(async () => {
+            // The backend flow is now long-lived, but we need to poll for the final status
+            // in case the user closes and reopens the tab.
+            const pollInterval = setInterval(async () => {
                 try {
                     const statusResult = await checkClientStatus({ userId: user.uid });
                     if (statusResult.status === 'connected') {
+                        clearInterval(pollInterval);
                         setStatus('connected');
                         setQrCode(null);
                         toast({
                             title: "Conexão estabelecida!",
                             description: "Seu WhatsApp foi conectado com sucesso.",
                         });
-                        stopPolling();
                     } else if (statusResult.status === 'disconnected') {
-                        // This might happen if the connection drops during polling
-                        setStatus('error');
-                        setQrCode(null);
-                        toast({
-                            title: "Falha na Conexão",
-                            description: "A conexão foi perdida. Tente gerar um novo QR Code.",
-                            variant: "destructive",
-                        });
-                        stopPolling();
+                         clearInterval(pollInterval);
+                         setStatus('error');
+                         setQrCode(null);
                     }
-                    // If status is still 'pending_qr', do nothing and poll again.
-                } catch (pollError) {
-                    console.error("Error polling for status:", pollError);
+                } catch(e) {
+                    clearInterval(pollInterval);
                     setStatus('error');
-                    stopPolling();
+                    setQrCode(null);
                 }
-            }, 5000); // Poll every 5 seconds
+            }, 5000);
 
+        } else if (result.status === 'connected') {
+            setStatus('connected');
+            setQrCode(null);
         } else {
-             // This case should ideally not happen with the new flow, but as a fallback:
             setStatus("error");
             toast({
                 title: "Erro Inesperado",
@@ -155,7 +121,6 @@ export default function SettingsPage() {
         console.error("Error in handleGenerateQrCode:", error);
         setStatus("error");
         setQrCode(null);
-        // Do not clear the client here, the backend flow manages it.
         toast({
             title: "Erro na Conexão",
             description: error.message || "Não foi possível conectar. Tente novamente.",
@@ -166,7 +131,6 @@ export default function SettingsPage() {
   
   const handleDisconnect = async () => {
     if (!user) return;
-    stopPolling();
     try {
         await clearActiveClient({ userId: user.uid });
         setStatus("disconnected")
