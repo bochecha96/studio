@@ -46,22 +46,24 @@ export default function SettingsPage() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setLoadingUser(true);
       if (currentUser) {
-        setUser(currentUser)
+        setUser(currentUser);
         if (typeof window !== "undefined") {
-          setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`)
+          setWebhookUrl(`${window.location.origin}/api/webhook/${currentUser.uid}`);
         }
         // Initial status check when page loads
-        checkClientStatus({userId: currentUser.uid}).then(res => {
-            setStatus(res.status as ConnectionStatus);
+        checkClientStatus({ userId: currentUser.uid }).then(res => {
+          setStatus(res.status as ConnectionStatus);
+        }).finally(() => {
+            setLoadingUser(false);
         });
       } else {
-        setUser(null)
+        setUser(null);
         setStatus("disconnected");
+        setLoadingUser(false);
       }
-      setLoadingUser(false)
-    })
-    
-    return () => unsubscribe()
+    });
+
+    return () => unsubscribe();
   }, [auth]);
 
 
@@ -71,51 +73,25 @@ export default function SettingsPage() {
         return;
     }
     
-    setStatus("loading")
-    setQrCode(null)
+    setStatus("loading");
+    setQrCode(null);
 
     try {
-        // This flow now handles the entire lifecycle, including waiting for 'ready'
         const result = await generateQrCode({ userId: user.uid });
-
-        if (result.qr && result.status === 'pending_qr') {
+        
+        if (result.status === 'pending_qr' && result.qr) {
             setQrCode(result.qr);
-            setStatus("pending_qr");
-            // The backend flow is now long-lived, but we need to poll for the final status
-            // in case the user closes and reopens the tab.
-            const pollInterval = setInterval(async () => {
-                try {
-                    const statusResult = await checkClientStatus({ userId: user.uid });
-                    if (statusResult.status === 'connected') {
-                        clearInterval(pollInterval);
-                        setStatus('connected');
-                        setQrCode(null);
-                        toast({
-                            title: "Conexão estabelecida!",
-                            description: "Seu WhatsApp foi conectado com sucesso.",
-                        });
-                    } else if (statusResult.status === 'disconnected') {
-                         clearInterval(pollInterval);
-                         setStatus('error');
-                         setQrCode(null);
-                    }
-                } catch(e) {
-                    clearInterval(pollInterval);
-                    setStatus('error');
-                    setQrCode(null);
-                }
-            }, 5000);
-
+            setStatus('pending_qr');
         } else if (result.status === 'connected') {
             setStatus('connected');
             setQrCode(null);
+            toast({
+                title: "Conexão estabelecida!",
+                description: "Seu WhatsApp foi conectado com sucesso.",
+            });
         } else {
             setStatus("error");
-            toast({
-                title: "Erro Inesperado",
-                description: result.message || "Não foi possível obter o QR Code.",
-                variant: "destructive",
-            });
+            toast({ title: "Erro", description: result.message || "Falha ao iniciar conexão.", variant: "destructive" });
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
