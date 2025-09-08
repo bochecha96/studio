@@ -1,0 +1,25 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Contacts Collection
+    match /contacts/{contactId} {
+      // Allow read/write only if the document's userId matches the logged-in user's uid
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+      // Allow create for anyone (for the webhook)
+      allow create: if true;
+    }
+
+    // Message Logs Collection
+    match /message_logs/{logId} {
+        // Allow create, read, write only for authenticated users on their own logs
+        allow read, write: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+
+    // User Stats Collection
+    match /user_stats/{userId} {
+        // Allow read/write only if the userId document matches the logged-in user's uid
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
