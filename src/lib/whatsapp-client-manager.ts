@@ -4,7 +4,6 @@
  * A more robust solution for production might involve a database or a shared cache like Redis.
  */
 import { type Client } from 'whatsapp-web.js';
-import { releaseLock } from './lock-manager';
 
 const activeClients = new Map<string, Client>();
 const intervalTrackers = new Map<string, NodeJS.Timeout>();
@@ -45,9 +44,6 @@ export async function deleteClient(userId: string): Promise<void> {
     // Stop any associated interval first
     stopSendingInterval(userId);
     
-    // Release any lock associated with this user
-    releaseLock(userId);
-
     const client = activeClients.get(userId);
     if (client) {
         try {
@@ -99,5 +95,3 @@ export function stopSendingInterval(userId: string): void {
         console.log(`Interval tracking stopped for user ${userId}.`);
     }
 }
-
-    
