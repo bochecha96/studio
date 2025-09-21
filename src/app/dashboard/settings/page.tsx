@@ -70,6 +70,7 @@ export default function SettingsPage() {
         setUser(null);
         setStatus("disconnected");
         setLoadingUser(false);
+        router.push('/login');
       }
     });
 
@@ -88,9 +89,11 @@ export default function SettingsPage() {
     pollingIntervalRef.current = setInterval(async () => {
       try {
         const res = await checkClientStatus({ userId });
-        if (res.status === 'connected') {
+        const currentStatus = res.status as ConnectionStatus;
+        setStatus(currentStatus);
+
+        if (currentStatus === 'connected') {
           stopPolling();
-          setStatus('connected');
           setQrCode(null);
           toast({
             title: "Conexão estabelecida!",
@@ -101,7 +104,7 @@ export default function SettingsPage() {
         console.error("Polling error:", error);
         // Optional: stop polling on error or just continue
       }
-    }, 2000); // Poll every 2 seconds
+    }, 3000); // Poll every 3 seconds
   }, [stopPolling, toast]);
 
 
@@ -113,18 +116,16 @@ export default function SettingsPage() {
     
     setStatus("loading");
     setQrCode(null);
-    stopPolling(); // Stop any previous polling
-
-    // It's better to clear any old client session before starting a new one
-    await clearActiveClient({ userId: user.uid });
+    stopPolling(); 
 
     try {
+        // Always clear the previous client to ensure a clean state
+        await clearActiveClient({ userId: user.uid });
         const result = await generateQrCode({ userId: user.uid });
         
         if (result.status === 'pending_qr' && result.qr) {
             setQrCode(result.qr);
             setStatus('pending_qr');
-            // Start polling for 'connected' status
             startPollingStatus(user.uid);
         } else {
             setStatus("error");
@@ -144,7 +145,7 @@ export default function SettingsPage() {
   
   const handleDisconnect = async () => {
     if (!user) return;
-    stopPolling(); // Stop polling on disconnect
+    stopPolling(); 
     try {
         await clearActiveClient({ userId: user.uid });
         setStatus("disconnected")
@@ -339,7 +340,7 @@ export default function SettingsPage() {
               <AlertTitle>Importante</AlertTitle>
               <AlertDescription>
                 Esta URL é única para sua conta. Para que funcione, sua plataforma deve enviar os dados (POST) no formato JSON.
-              </AlertDescription>
+              </WebHookAlertDescription>
             </Alert>
           </div>
         </CardContent>
