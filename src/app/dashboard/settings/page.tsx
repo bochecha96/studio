@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Image from "next/image"
 import { getAuth, onAuthStateChanged, User } from "firebase/auth"
 import { Button } from "@/components/ui/button"
@@ -40,6 +40,16 @@ export default function SettingsPage() {
   const [isSendingTest, setIsSendingTest] = useState(false)
   const { toast } = useToast()
   const auth = getAuth(app)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Function to stop polling
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, []);
+
 
   // Effect for authenticating user and setting initial state
   useEffect(() => {
@@ -63,8 +73,36 @@ export default function SettingsPage() {
       }
     });
 
-    return () => unsubscribe();
-  }, [auth]);
+    // Cleanup on unmount
+    return () => {
+        unsubscribe();
+        stopPolling();
+    }
+  }, [auth, stopPolling]);
+
+
+  const startPollingStatus = useCallback((userId: string) => {
+    // Stop any existing polling before starting a new one
+    stopPolling();
+
+    pollingIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await checkClientStatus({ userId });
+        if (res.status === 'connected') {
+          stopPolling();
+          setStatus('connected');
+          setQrCode(null);
+          toast({
+            title: "Conexão estabelecida!",
+            description: "Seu WhatsApp foi conectado com sucesso.",
+          });
+        }
+      } catch (error) {
+        console.error("Polling error:", error);
+        // Optional: stop polling on error or just continue
+      }
+    }, 2000); // Poll every 2 seconds
+  }, [stopPolling, toast]);
 
 
   const handleGenerateQrCode = async () => {
@@ -75,14 +113,10 @@ export default function SettingsPage() {
     
     setStatus("loading");
     setQrCode(null);
+    stopPolling(); // Stop any previous polling
 
-    // Check status first, as per user's suggestion.
-    const currentStatus = await checkClientStatus({ userId: user.uid });
-    if (currentStatus.status === 'connected') {
-        setStatus('connected');
-        toast({ title: "Informação", description: "O WhatsApp já está conectado." });
-        return;
-    }
+    // It's better to clear any old client session before starting a new one
+    await clearActiveClient({ userId: user.uid });
 
     try {
         const result = await generateQrCode({ userId: user.uid });
@@ -90,34 +124,27 @@ export default function SettingsPage() {
         if (result.status === 'pending_qr' && result.qr) {
             setQrCode(result.qr);
             setStatus('pending_qr');
-        } else if (result.status === 'connected') {
-            setStatus('connected');
-            setQrCode(null);
-            toast({
-                title: "Conexão estabelecida!",
-                description: "Seu WhatsApp foi conectado com sucesso.",
-            });
+            // Start polling for 'connected' status
+            startPollingStatus(user.uid);
         } else {
             setStatus("error");
             toast({ title: "Erro", description: result.message || "Falha ao iniciar conexão.", variant: "destructive" });
         }
     } catch (error: any) {
         console.error("Error in handleGenerateQrCode:", error);
-        // Don't show toast for "already in progress" as it's a controlled state
-        if (!error.message.includes('em andamento')) {
-            setStatus("error");
-            setQrCode(null);
-            toast({
-                title: "Erro na Conexão",
-                description: error.message || "Não foi possível conectar. Tente novamente.",
-                variant: "destructive",
-            });
-        }
+        setStatus("error");
+        setQrCode(null);
+        toast({
+            title: "Erro na Conexão",
+            description: error.message || "Não foi possível conectar. Tente novamente.",
+            variant: "destructive",
+        });
     }
   }
   
   const handleDisconnect = async () => {
     if (!user) return;
+    stopPolling(); // Stop polling on disconnect
     try {
         await clearActiveClient({ userId: user.uid });
         setStatus("disconnected")
