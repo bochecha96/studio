@@ -43,7 +43,7 @@ export function getAllClients(): Map<string, Client> {
 export async function deleteClient(userId: string): Promise<void> {
     // Stop any associated interval first
     stopSendingInterval(userId);
-    
+
     const client = activeClients.get(userId);
     if (client) {
         try {
@@ -95,3 +95,5 @@ export function stopSendingInterval(userId: string): void {
         console.log(`Interval tracking stopped for user ${userId}.`);
     }
 }
+
+    

@@ -13,7 +13,7 @@ import qrcode from 'qrcode';
 import { collection, query, where, getDocs, updateDoc, doc, setDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendNewContacts } from './sendNewContacts-flow';
-import { setClient, deleteClient, getClientStatus,startSendingInterval } from '@/lib/whatsapp-client-manager';
+import { setClient, deleteClient, getClient, getClientStatus,startSendingInterval } from '@/lib/whatsapp-client-manager';
 import { generateAnswer } from './generateAnswer-flow';
 
 
@@ -121,13 +121,17 @@ const generateQrCodeFlow = ai.defineFlow(
     
     console.log(`Starting a new QR code generation process for user ${userId}.`);
     
+    // The responsibility to clear old clients is now on the frontend action.
+    // This flow assumes it's starting fresh.
+
+    // Dynamically import 'whatsapp-web.js'
     const { Client, LocalAuth } = await import('whatsapp-web.js');
 
     const client = new Client({
         authStrategy: new LocalAuth({ dataPath: `.wweb_auth_${userId}` }),
         puppeteer: {
         headless: true,
-        args: [
+         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
@@ -136,38 +140,21 @@ const generateQrCodeFlow = ai.defineFlow(
             '--no-zygote',
             '--single-process', 
             '--disable-gpu'
-        ],
+          ],
     },
-    });
+      });
 
-    // This promise will wrap the entire connection lifecycle
-    return await new Promise<GenerateQrCodeOutput>((resolve, reject) => {
+    return new Promise<GenerateQrCodeOutput>((resolve, reject) => {
         let qrResolved = false;
 
-        const cleanup = (timeoutId: NodeJS.Timeout) => {
-            clearTimeout(timeoutId);
-            // Detach all listeners to prevent memory leaks
-            client.removeAllListeners('qr');
-            client.removeAllListeners('ready');
-            client.removeAllListeners('auth_failure');
-            client.removeAllListeners('disconnected');
-        };
-        
-        const cleanupAndReject = (error: Error, timeoutId: NodeJS.Timeout) => {
-            cleanup(timeoutId);
-            client.destroy().catch(e => console.error("Error destroying client on cleanup", e));
-            reject(error);
-        };
-        
         const timeoutId = setTimeout(() => {
-            // If QR was never resolved, it means the client initialization failed to even produce a QR code.
-            if (!qrResolved) {
-                console.log(`Connection timed out for user ${userId} before QR was generated.`);
-                cleanupAndReject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'), timeoutId);
+            if (!client.info) { // If client is not ready by the timeout
+                console.log(`Connection timed out for user ${userId}. Destroying client.`);
+                client.destroy().catch(e => console.error("Error destroying client on timeout", e));
+                deleteClient(userId); // Ensure it's removed from the manager
+                reject(new Error('A conexão expirou. Por favor, tente gerar um novo QR Code.'));
             }
-            // If QR was resolved, we let the connection live, the user might still be scanning it.
-            // A separate mechanism should handle cleanup if the user abandons the page.
-        }, 120000); // 2 minutes timeout
+        }, 45000); // 45-second timeout for the entire connection process
 
         client.on('qr', async (qr) => {
             console.log(`QR RECEIVED for ${userId}.`);
@@ -175,56 +162,61 @@ const generateQrCodeFlow = ai.defineFlow(
                 try {
                     const qrCodeDataUri = await qrcode.toDataURL(qr);
                     qrResolved = true;
-                    // Resolve with the QR code, this is the first update to the frontend.
                     resolve({ qr: qrCodeDataUri, status: 'pending_qr' });
                 } catch (err) {
                     console.error("Failed to generate QR code data URI:", err);
-                    cleanupAndReject(new Error("Falha ao gerar o QR code."), timeoutId);
+                    clearTimeout(timeoutId);
+                    reject(new Error("Falha ao gerar o QR code."));
                 }
             }
         });
 
         client.on('ready', async () => {
             console.log(`Client for ${userId} is ready! Setting up for message receiving.`);
+            clearTimeout(timeoutId); // Connection successful, clear timeout
             setClient(userId, client);
             
             client.on('message', (message) => handleIncomingMessage(message, userId, client));
             
+            // Do not resolve here again if QR was already sent.
+            // The frontend will poll for the 'connected' status.
+            
+            // Initial sync of contacts
             try {
                 await sendNewContacts({ userId });
             } catch(error) {
                 console.error(`Error during initial sendNewContacts for user ${userId}:`, error);
             };
 
-            const intervalId = setInterval(() => {
+             // Start periodic check every 5 minutes
+             const intervalId = setInterval(() => {
                 console.log(`[Interval] Running periodic check for pending contacts for user ${userId}.`);
                 sendNewContacts({ userId }).catch(error => {
                     console.error(`[Interval] Error sending pending contacts for user ${userId}:`, error);
                 });
-            }, 300000);
+            }, 300000); // 300000 ms = 5 minutes
 
             startSendingInterval(userId, intervalId);
-            
-            // Resolve the promise to notify the frontend about the successful connection
-            cleanup(timeoutId);
-            resolve({ status: 'connected' });
         });
         
         client.on('auth_failure', (msg) => {
-            console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
-            cleanupAndReject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'), timeoutId);
+          console.error(`AUTHENTICATION FAILURE for ${userId}:`, msg);
+          clearTimeout(timeoutId);
+          deleteClient(userId);
+          reject(new Error('Falha na autenticação. Por favor, gere um novo QR Code.'));
         });
 
         client.on('disconnected', (reason) => {
-            console.log(`Client for ${userId} was logged out:`, reason);
-            // This is a terminal state.
-            deleteClient(userId);
-            cleanupAndReject(new Error('Cliente foi desconectado.'), timeoutId);
+          console.log(`Client for ${userId} was logged out:`, reason);
+          clearTimeout(timeoutId);
+          deleteClient(userId);
+          // Don't reject, as this is a state the frontend can handle.
         });
 
         client.initialize().catch(err => {
             console.error(`Client initialization error for ${userId}:`, err);
-            cleanupAndReject(new Error("Falha ao inicializar o cliente WhatsApp. Tente novamente."), timeoutId);
+            clearTimeout(timeoutId);
+            reject(new Error("Falha ao inicializar o cliente WhatsApp. Tente novamente."));
         });
     });
   }
@@ -266,3 +258,5 @@ const checkClientStatusFlow = ai.defineFlow(
         return { status };
     }
 );
+
+    
